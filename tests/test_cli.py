@@ -1,11 +1,11 @@
-"""CLI tests for gatk-germline-cnv-plotter."""
+"""CLI tests for gcnvplot."""
 
 from __future__ import annotations
 
 import pytest
 
-import gatk_germline_cnv_plotter
-import gatk_germline_cnv_plotter.cli as cli
+import gcnvplot
+import gcnvplot.cli as cli
 
 
 def test_main_version(capsys: pytest.CaptureFixture[str]) -> None:
@@ -15,7 +15,7 @@ def test_main_version(capsys: pytest.CaptureFixture[str]) -> None:
     assert exc_info.value.code == 0
     assert (
         capsys.readouterr().out
-        == f"gatk-germline-cnv-plotter {gatk_germline_cnv_plotter.__version__}\n"
+        == f"gcnvplot {gcnvplot.__version__}\n"
     )
 
 

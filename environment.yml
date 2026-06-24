@@ -1,4 +1,4 @@
-name: gatk-germline-cnv-plotter-dev
+name: gcnvplot-dev
 channels:
   - conda-forge
 dependencies:

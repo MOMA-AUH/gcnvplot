@@ -1,4 +1,4 @@
-# gatk-germline-cnv-plotter
+# gcnvplot
 
 Basic scaffold for a Python CLI application for plotting GATK germline CNV outputs.
 
@@ -14,7 +14,7 @@ Or create the reference conda development environment:
 
 ```bash
 conda env create -f environment.yml
-conda activate gatk-germline-cnv-plotter-dev
+conda activate gcnvplot-dev
 ```
 
 Run the test suite:
@@ -26,6 +26,6 @@ pytest
 Try the CLI:
 
 ```bash
-gatk-germline-cnv-plotter --version
-gatk-germline-cnv-plotter plot --input sample.tsv --output plot.png
+gcnvplot --version
+gcnvplot plot --input sample.tsv --output plot.png
 ```

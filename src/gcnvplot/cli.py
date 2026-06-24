@@ -1,4 +1,4 @@
-"""Command-line interface for gatk-germline-cnv-plotter."""
+"""Command-line interface for gcnvplot."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from . import __version__
 def build_parser() -> argparse.ArgumentParser:
     """Build and return the top-level argument parser."""
     parser = argparse.ArgumentParser(
-        prog="gatk-germline-cnv-plotter",
+        prog="gcnvplot",
         description="Plot GATK germline CNV outputs.",
     )
     parser.add_argument(
