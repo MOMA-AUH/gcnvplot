@@ -27,5 +27,6 @@ Try the CLI:
 
 ```bash
 gcnvplot --version
-gcnvplot plot --input sample.tsv --output plot.png
+gcnvplot create-background --read-counts-list background_inputs.txt --output background.tsv
+gcnvplot plot --read-counts sample.tsv --background background.tsv --region chr1:100-299 --output plot.svg
 ```
