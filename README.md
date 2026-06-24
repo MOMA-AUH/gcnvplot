@@ -10,6 +10,13 @@ Install the project in editable mode with test dependencies:
 python -m pip install -e .[dev]
 ```
 
+Or create the reference conda development environment:
+
+```bash
+conda env create -f environment.yml
+conda activate gatk-germline-cnv-plotter-dev
+```
+
 Run the test suite:
 
 ```bash
