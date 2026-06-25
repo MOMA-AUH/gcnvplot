@@ -1,32 +1,42 @@
 # gcnvplot
 
-Basic scaffold for a Python CLI application for plotting GATK germline CNV outputs.
+[![Anaconda-Server Badge](https://anaconda.org/MOMA-AUH/gcnvplot/badges/version.svg)](https://anaconda.org/MOMA-AUH/gcnvplot) [![Anaconda-Server Badge](https://anaconda.org/MOMA-AUH/gcnvplot/badges/downloads.svg)](https://anaconda.org/MOMA-AUH/gcnvplot)
 
-## Development
+Tool for plotting GATK germline CNV read-count signals against a background cohort
 
-Install the project in editable mode with test dependencies:
+## Installation
+
+The recommended way to install **gcnvplot** is via [conda](https://docs.conda.io/), using the `MOMA-AUH` channel:
 
 ```bash
-python -m pip install -e .[dev]
+conda install MOMA-AUH::gcnvplot
 ```
 
-Or create the reference conda development environment:
+## Usage
 
 ```bash
-conda env create -f environment.yml
-conda activate gcnvplot-dev
-```
-
-Run the test suite:
-
-```bash
-pytest
-```
-
-Try the CLI:
-
-```bash
+gcnvplot --help
 gcnvplot --version
-gcnvplot create-background --read-counts-list background_inputs.txt --output background.tsv
-gcnvplot plot --read-counts sample.tsv --background background.tsv --region chr1:100-299 --output plot.svg
+```
+
+## Inputs and output
+
+`gcnvplot` expects GATK `CollectReadCounts` tables as input. These can be plain TSV files or gzipped TSV files, and must contain the columns `CONTIG`, `START`, `END`, and `COUNT`.
+
+For `create-background`, provide a text file with one sample read-count path per line. This command writes a background cohort TSV with interval-wise normalized summary statistics.
+
+For `plot`, provide one sample read-count file, one background TSV produced by `create-background`, and a genomic region such as `chr1:100-299`. This command writes an SVG plot showing the sample log2 signal relative to the background cohort.
+
+Example:
+
+```bash
+gcnvplot create-background \
+  --read-counts-list background_inputs.txt \
+  --output background.tsv
+
+gcnvplot plot \
+  --read-counts sample.tsv \
+  --background background.tsv \
+  --region chr1:100-299 \
+  --output plot.svg
 ```
