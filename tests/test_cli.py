@@ -12,11 +12,9 @@ import gcnvplot.cli as cli
 
 def write_read_counts(path: Path, rows: list[tuple[str, int, int, int]]) -> None:
     """Write a tiny CollectReadCounts-style TSV."""
-    lines = ["@RG	ID:test", "CONTIG	START	END	COUNT"]
-    lines.extend(f"{contig}	{start}	{end}	{count}" for contig, start, end, count in rows)
-    path.write_text("
-".join(lines) + "
-", encoding="utf-8")
+    lines = ["@RG\tID:test", "CONTIG\tSTART\tEND\tCOUNT"]
+    lines.extend(f"{contig}\t{start}\t{end}\t{count}" for contig, start, end, count in rows)
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def test_main_version(capsys: pytest.CaptureFixture[str]) -> None:
@@ -24,8 +22,7 @@ def test_main_version(capsys: pytest.CaptureFixture[str]) -> None:
         cli.main(["--version"])
 
     assert exc_info.value.code == 0
-    assert capsys.readouterr().out == f"gcnvplot {gcnvplot.__version__}
-"
+    assert capsys.readouterr().out == f"gcnvplot {gcnvplot.__version__}\n"
 
 
 def test_main_requires_subcommand(capsys: pytest.CaptureFixture[str]) -> None:
@@ -56,9 +53,7 @@ def test_build_background_writes_expected_summary(
         ],
     )
     paths_file = tmp_path / "background_inputs.txt"
-    paths_file.write_text("sample_a.tsv
-sample_b.tsv
-", encoding="utf-8")
+    paths_file.write_text("sample_a.tsv\nsample_b.tsv\n", encoding="utf-8")
     output_path = tmp_path / "background.tsv"
 
     assert (
@@ -76,16 +71,13 @@ sample_b.tsv
 
     background_text = output_path.read_text(encoding="utf-8")
     assert "# normalization=median" in background_text
-    assert "chr1	100	199	2	0.66666667	0.66666667" in background_text
-    assert "chr1	200	299	2	1.3333333	1.3333333" in background_text
+    assert "chr1\t100\t199\t2\t0.66666667\t0.66666667" in background_text
+    assert "chr1\t200\t299\t2\t1.3333333\t1.3333333" in background_text
 
     assert capsys.readouterr().out == (
-        "Background samples: 2
-"
-        "Background intervals: 2
-"
-        f"Wrote: {output_path}
-"
+        "Background samples: 2\n"
+        "Background intervals: 2\n"
+        f"Wrote: {output_path}\n"
     )
 
 
@@ -93,8 +85,7 @@ def test_create_background_requires_output(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     paths_file = tmp_path / "background_inputs.txt"
-    paths_file.write_text("sample_a.tsv
-", encoding="utf-8")
+    paths_file.write_text("sample_a.tsv\n", encoding="utf-8")
 
     with pytest.raises(SystemExit) as exc_info:
         cli.main(["create-background", "--read-counts-list", str(paths_file)])
@@ -106,19 +97,17 @@ def test_create_background_requires_output(
 def test_plot_requires_output(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     background_path = tmp_path / "background.tsv"
     background_path.write_text(
-        "
-".join(
+        "\n".join(
             [
                 "# normalization=median",
                 "# samples=2",
                 "# lower_percentile=5",
                 "# upper_percentile=95",
-                "CONTIG	START	END	N	BG_NORM_MEAN	BG_NORM_MEDIAN	BG_NORM_SD	BG_NORM_P5	BG_NORM_P95",
-                "chr1	100	199	2	1	1	0.1	0.8	1.2",
+                "CONTIG\tSTART\tEND\tN\tBG_NORM_MEAN\tBG_NORM_MEDIAN\tBG_NORM_SD\tBG_NORM_P5\tBG_NORM_P95",
+                "chr1\t100\t199\t2\t1\t1\t0.1\t0.8\t1.2",
             ]
         )
-        + "
-",
+        + "\n",
         encoding="utf-8",
     )
     sample_path = tmp_path / "sample.tsv"
@@ -144,22 +133,20 @@ def test_plot_log2_ratio_writes_svg_with_zero_centered_axis(
 ) -> None:
     background_path = tmp_path / "background.tsv"
     background_path.write_text(
-        "
-".join(
+        "\n".join(
             [
                 "# normalization=median",
                 "# samples=2",
                 "# lower_percentile=5",
                 "# upper_percentile=95",
-                "CONTIG	START	END	N	BG_NORM_MEAN	BG_NORM_MEDIAN	BG_NORM_SD	BG_NORM_P5	BG_NORM_P95",
-                "chr1	100	199	2	1	1	0.1	0.8	1.2",
-                "chr2	100	199	2	1	1	0.1	0.8	1.2",
-                "chr1	200	299	2	1	1	0.1	0.8	1.2",
-                "chr2	200	299	2	1	1	0.1	0.8	1.2",
+                "CONTIG\tSTART\tEND\tN\tBG_NORM_MEAN\tBG_NORM_MEDIAN\tBG_NORM_SD\tBG_NORM_P5\tBG_NORM_P95",
+                "chr1\t100\t199\t2\t1\t1\t0.1\t0.8\t1.2",
+                "chr2\t100\t199\t2\t1\t1\t0.1\t0.8\t1.2",
+                "chr1\t200\t299\t2\t1\t1\t0.1\t0.8\t1.2",
+                "chr2\t200\t299\t2\t1\t1\t0.1\t0.8\t1.2",
             ]
         )
-        + "
-",
+        + "\n",
         encoding="utf-8",
     )
     sample_path = tmp_path / "sample.tsv"
@@ -199,8 +186,6 @@ def test_plot_log2_ratio_writes_svg_with_zero_centered_axis(
     assert "SIGNAL=0.6727054" in svg
 
     assert capsys.readouterr().out == (
-        "Plotted intervals: 2
-"
-        f"Wrote: {output_path}
-"
+        "Plotted intervals: 2\n"
+        f"Wrote: {output_path}\n"
     )
