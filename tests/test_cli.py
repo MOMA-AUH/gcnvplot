@@ -179,6 +179,8 @@ def test_plot_log2_ratio_writes_svg_with_zero_centered_axis(
     )
 
     svg = output_path.read_text(encoding="utf-8")
+    assert "chr1:100-199" in svg
+    assert "chr1:200-299" in svg
     assert "chr2:100-199" not in svg
     assert "chr2:200-299" not in svg
     assert "Log2(sample/background)" in svg
