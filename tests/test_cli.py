@@ -154,9 +154,9 @@ def test_plot_log2_ratio_writes_svg_with_zero_centered_axis(
         sample_path,
         [
             ("chr1", 100, 199, 10),
-            ("chr2", 100, 199, 999),
+            ("chr2", 100, 199, 0),
             ("chr1", 200, 299, 40),
-            ("chr2", 200, 299, 999),
+            ("chr2", 200, 299, 0),
         ],
     )
     output_path = tmp_path / "plot.svg"
