@@ -70,9 +70,9 @@ def test_build_background_writes_expected_summary(
     )
 
     background_text = output_path.read_text(encoding="utf-8")
-    assert "# normalization=median" in background_text
-    assert "chr1\t100\t199\t2\t0.66666667\t0.66666667" in background_text
-    assert "chr1\t200\t299\t2\t1.3333333\t1.3333333" in background_text
+    assert "# normalization=median-of-ratios" in background_text
+    assert "chr1\t100\t199\t12.5\t2\t12.5\t12.5\t0\t12.5\t12.5" in background_text
+    assert "chr1\t200\t299\t25\t2\t25\t25\t0\t25\t25" in background_text
 
     assert capsys.readouterr().out == (
         "Background samples: 2\n"
@@ -135,15 +135,16 @@ def test_plot_log2_ratio_writes_svg_with_zero_centered_axis(
     background_path.write_text(
         "\n".join(
             [
-                "# normalization=median",
+                "# normalization=median-of-ratios",
+                "# baseline=median-positive-count",
                 "# samples=2",
                 "# lower_percentile=5",
                 "# upper_percentile=95",
-                "CONTIG\tSTART\tEND\tN\tBG_NORM_MEAN\tBG_NORM_MEDIAN\tBG_NORM_SD\tBG_NORM_P5\tBG_NORM_P95",
-                "chr1\t100\t199\t2\t1\t1\t0.1\t0.8\t1.2",
-                "chr2\t100\t199\t2\t1\t1\t0.1\t0.8\t1.2",
-                "chr1\t200\t299\t2\t1\t1\t0.1\t0.8\t1.2",
-                "chr2\t200\t299\t2\t1\t1\t0.1\t0.8\t1.2",
+                "CONTIG\tSTART\tEND\tBASELINE_MEDIAN\tN\tBG_NORM_MEAN\tBG_NORM_MEDIAN\tBG_NORM_SD\tBG_NORM_P5\tBG_NORM_P95",
+                "chr1\t100\t199\t12.5\t2\t12.5\t12.5\t0\t12.5\t12.5",
+                "chr2\t100\t199\t0\t2\t1\t1\t0.1\t0.8\t1.2",
+                "chr1\t200\t299\t25\t2\t25\t25\t0\t25\t25",
+                "chr2\t200\t299\t0\t2\t1\t1\t0.1\t0.8\t1.2",
             ]
         )
         + "\n",
@@ -184,8 +185,8 @@ def test_plot_log2_ratio_writes_svg_with_zero_centered_axis(
     assert "chr2:100-199" not in svg
     assert "chr2:200-299" not in svg
     assert "Log2(sample/background)" in svg
-    assert "SIGNAL=-1.3006595" in svg
-    assert "SIGNAL=0.6727054" in svg
+    assert "SIGNAL=-0.584386" in svg
+    assert "SIGNAL=0.41489328" in svg
 
     assert capsys.readouterr().out == (
         "Plotted intervals: 2\n"

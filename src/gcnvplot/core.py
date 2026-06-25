@@ -17,6 +17,7 @@ BACKGROUND_FIELDS = [
     "CONTIG",
     "START",
     "END",
+    "BASELINE_MEDIAN",
     "N",
     "BG_NORM_MEAN",
     "BG_NORM_MEDIAN",
@@ -114,17 +115,37 @@ def read_path_list(path: Path) -> list[Path]:
     return paths
 
 
-def normalization_factor(counts: dict[Interval, int]) -> float:
-    """Return the fixed median-based normalization factor."""
-    values = [count for count in counts.values() if count > 0]
-    if not values:
-        raise ValueError("Cannot median-normalize a file with no positive counts")
-    return median([float(value) for value in values])
+def interval_baselines(sample_counts: list[dict[Interval, int]]) -> dict[Interval, float]:
+    """Estimate a robust baseline for each interval from background samples."""
+    interval_values: dict[Interval, list[float]] = defaultdict(list)
+    for counts in sample_counts:
+        for interval, count in counts.items():
+            if count > 0:
+                interval_values[interval].append(float(count))
+
+    baselines: dict[Interval, float] = {}
+    for interval, values in interval_values.items():
+        baselines[interval] = median(values)
+    return baselines
 
 
-def normalized_counts(counts: dict[Interval, int]) -> dict[Interval, float]:
-    """Return interval counts divided by the median normalization factor."""
-    factor = normalization_factor(counts)
+def size_factor_from_baseline(
+    counts: dict[Interval, int], baselines: dict[Interval, float]
+) -> float:
+    """Return a DESeq-style median-of-ratios size factor."""
+    ratios = [
+        count / baseline
+        for interval, count in counts.items()
+        if count > 0 and (baseline := baselines.get(interval)) is not None and baseline > 0
+    ]
+    if not ratios:
+        raise ValueError("Cannot normalize a file without usable baseline intervals")
+    return median(ratios)
+
+
+def normalized_counts(counts: dict[Interval, int], baselines: dict[Interval, float]) -> dict[Interval, float]:
+    """Return interval counts divided by the median-of-ratios size factor."""
+    factor = size_factor_from_baseline(counts, baselines)
     return {interval: count / factor for interval, count in counts.items()}
 
 
@@ -182,27 +203,35 @@ def build_background(args: argparse.Namespace) -> int:
     if not files:
         raise SystemExit(f"{args.read_counts_list}: no read-count TSV paths found")
 
+    sample_counts = [parse_read_counts(path) for path in files]
+    baselines = interval_baselines(sample_counts)
+
     interval_values: dict[Interval, list[float]] = defaultdict(list)
-    for path in files:
-        counts = parse_read_counts(path)
-        for interval, value in normalized_counts(counts).items():
+    for counts in sample_counts:
+        for interval, value in normalized_counts(counts, baselines).items():
             interval_values[interval].append(value)
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     with args.output.open("w", newline="", encoding="utf-8") as handle:
-        handle.write("# normalization=median\n")
+        handle.write("# normalization=median-of-ratios\n")
+        handle.write("# baseline=median-positive-count\n")
         handle.write(f"# samples={len(files)}\n")
         handle.write("# lower_percentile=5\n")
         handle.write("# upper_percentile=95\n")
         writer = csv.DictWriter(handle, fieldnames=BACKGROUND_FIELDS, delimiter="\t")
         writer.writeheader()
+        written_intervals = 0
         for interval in sorted(interval_values, key=lambda item: (item[0], item[1], item[2])):
+            baseline = baselines.get(interval)
+            if baseline is None or baseline <= 0:
+                continue
             values = interval_values[interval]
             contig, start, end = interval
             row = {
                 "CONTIG": contig,
                 "START": start,
                 "END": end,
+                "BASELINE_MEDIAN": baseline,
                 "N": len(values),
                 "BG_NORM_MEAN": sum(values) / len(values),
                 "BG_NORM_MEDIAN": median(values),
@@ -211,9 +240,10 @@ def build_background(args: argparse.Namespace) -> int:
                 "BG_NORM_P95": percentile(values, 95),
             }
             writer.writerow({key: fmt(value) for key, value in row.items()})
+            written_intervals += 1
 
     print(f"Background samples: {len(files)}")
-    print(f"Background intervals: {len(interval_values)}")
+    print(f"Background intervals: {written_intervals}")
     print(f"Wrote: {args.output}")
     return 0
 
@@ -221,14 +251,23 @@ def build_background(args: argparse.Namespace) -> int:
 def rows_for_plot(args: argparse.Namespace) -> list[dict[str, object]]:
     """Join one sample with the background for plotting."""
     counts = parse_read_counts(args.read_counts)
-    sample_norm = normalized_counts(counts)
     background = parse_background(args.background)
+    baselines = {
+        interval: float(row["BASELINE_MEDIAN"])
+        for interval, row in background.items()
+        if float(row["BASELINE_MEDIAN"]) > 0
+    }
+    sample_norm = normalized_counts(counts, baselines)
     region = args.region
 
     rows: list[dict[str, object]] = []
     missing_background = 0
     for interval in sorted(counts, key=lambda item: (item[0], item[1], item[2])):
         if interval[0] != region[0] or not overlaps(interval[1], interval[2], region[1], region[2]):
+            continue
+        baseline = baselines.get(interval)
+        if baseline is None or baseline <= 0:
+            missing_background += 1
             continue
         bg = background.get(interval)
         if bg is None:
