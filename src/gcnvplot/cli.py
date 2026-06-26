@@ -45,30 +45,24 @@ def build_parser() -> argparse.ArgumentParser:
         "plot",
         help="Plot one sample against a background cohort.",
     )
-    plot.add_argument(
-        "--read-counts",
-        type=Path,
-        required=True,
-        help="GATK read_counts.tsv for the sample to plot.",
-    )
-    plot.add_argument(
-        "--background",
-        type=Path,
-        required=True,
-        help="Background TSV from create-background.",
-    )
-    plot.add_argument(
+    plot.add_argument("--read-counts", type=Path, required=True, help="GATK read_counts.tsv for the sample to plot.")
+    plot.add_argument("--background", type=Path, required=True, help="Background TSV from create-background.")
+    region_or_transcript = plot.add_mutually_exclusive_group(required=True)
+    region_or_transcript.add_argument(
         "--region",
         type=parse_region,
-        required=True,
         help="Genomic region to plot, e.g. chr1:100-200.",
     )
-    plot.add_argument(
-        "--output",
-        type=Path,
-        required=True,
-        help="SVG output path.",
+    region_or_transcript.add_argument(
+        "--transcript",
+        help="Transcript ID to plot using exon coordinates from a GENCODE GTF.",
     )
+    plot.add_argument(
+        "--gtf",
+        type=Path,
+        help="GENCODE GTF file for --transcript; gzipped files are supported.",
+    )
+    plot.add_argument("--output", type=Path, required=True, help="SVG output path.")
     plot.set_defaults(handler=plot_sample)
     return parser
 
@@ -77,6 +71,8 @@ def main(argv: list[str] | None = None) -> int:
     """Run the CLI."""
     parser = build_parser()
     args = parser.parse_args(argv)
+    if getattr(args, "transcript", None) is not None and getattr(args, "gtf", None) is None:
+        parser.error("--gtf is required when --transcript is used")
     handler = getattr(args, "handler", None)
     if handler is None:
         parser.print_help()

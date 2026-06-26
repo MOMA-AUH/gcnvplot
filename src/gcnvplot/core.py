@@ -7,6 +7,7 @@ import csv
 import gzip
 import html
 import math
+from dataclasses import dataclass
 from collections import defaultdict
 from pathlib import Path
 
@@ -25,6 +26,28 @@ BACKGROUND_FIELDS = [
     "BG_NORM_P5",
     "BG_NORM_P95",
 ]
+
+
+@dataclass(frozen=True)
+class TranscriptExon:
+    """One exon in transcript order."""
+
+    number: int
+    start: int
+    end: int
+
+
+@dataclass(frozen=True)
+class TranscriptAnnotation:
+    """Transcript model used for plotting."""
+
+    transcript_id: str
+    gene_name: str
+    contig: str
+    strand: str
+    start: int
+    end: int
+    exons: list[TranscriptExon]
 
 
 def median(values: list[float]) -> float:
@@ -197,6 +220,88 @@ def parse_background(path: Path) -> dict[Interval, dict[str, str]]:
     return background
 
 
+def parse_gtf_attributes(text: str) -> dict[str, str]:
+    """Parse a GTF attribute column into a dictionary."""
+    attributes: dict[str, str] = {}
+    for item in text.strip().split(";"):
+        item = item.strip()
+        if not item:
+            continue
+        key, value = item.split(" ", 1)
+        attributes[key] = value.strip().strip('"')
+    return attributes
+
+
+def transcript_id_matches(value: str | None, target: str) -> bool:
+    """Return True when two transcript IDs match with or without version suffixes."""
+    if value is None:
+        return False
+    if value == target:
+        return True
+    return value.split(".", 1)[0] == target.split(".", 1)[0]
+
+
+def load_transcript_annotation(gtf_path: Path, transcript_id: str) -> TranscriptAnnotation:
+    """Load exon coordinates and gene name for one transcript from a GTF."""
+    contig: str | None = None
+    strand: str | None = None
+    gene_name: str | None = None
+    gene_id: str | None = None
+    exon_coords: list[tuple[int, int]] = []
+
+    with open_text(gtf_path) as handle:
+        for line in handle:
+            if not line or line.startswith("#"):
+                continue
+            fields = line.rstrip("\n").split("\t")
+            if len(fields) != 9:
+                continue
+            seqname, _source, feature, start_text, end_text, _score, feature_strand, _frame, attributes_text = fields
+            attributes = parse_gtf_attributes(attributes_text)
+            if not transcript_id_matches(attributes.get("transcript_id"), transcript_id):
+                continue
+
+            feature_contig = seqname
+            feature_strand = feature_strand
+            if contig is None:
+                contig = feature_contig
+            elif contig != feature_contig:
+                raise ValueError(f"{gtf_path}: transcript {transcript_id} spans multiple contigs")
+
+            if strand is None:
+                strand = feature_strand
+            elif strand != feature_strand:
+                raise ValueError(f"{gtf_path}: transcript {transcript_id} has inconsistent strands")
+
+            if gene_name is None:
+                gene_name = attributes.get("gene_name") or attributes.get("gene_id")
+            if gene_id is None:
+                gene_id = attributes.get("gene_id")
+
+            if feature == "exon":
+                exon_coords.append((int(start_text), int(end_text)))
+
+    if not exon_coords:
+        raise ValueError(f"{gtf_path}: transcript {transcript_id} not found or has no exons")
+    if contig is None or strand is None:
+        raise ValueError(f"{gtf_path}: transcript {transcript_id} is missing contig or strand information")
+
+    ordered_coords = sorted(exon_coords, key=lambda item: item[0], reverse=strand == "-")
+    exons = [TranscriptExon(number=index + 1, start=start, end=end) for index, (start, end) in enumerate(ordered_coords)]
+    transcript_gene_name = gene_name or gene_id or transcript_id
+    start = min(exon.start for exon in exons)
+    end = max(exon.end for exon in exons)
+    return TranscriptAnnotation(
+        transcript_id=transcript_id,
+        gene_name=transcript_gene_name,
+        contig=contig,
+        strand=strand,
+        start=start,
+        end=end,
+        exons=exons,
+    )
+
+
 def build_background(args: argparse.Namespace) -> int:
     """Build interval-wise background summaries."""
     files = read_path_list(args.read_counts_list)
@@ -248,7 +353,7 @@ def build_background(args: argparse.Namespace) -> int:
     return 0
 
 
-def rows_for_plot(args: argparse.Namespace) -> list[dict[str, object]]:
+def rows_for_plot(args: argparse.Namespace, region: Interval) -> list[dict[str, object]]:
     """Join one sample with the background for plotting."""
     counts = parse_read_counts(args.read_counts)
     background = parse_background(args.background)
@@ -258,8 +363,6 @@ def rows_for_plot(args: argparse.Namespace) -> list[dict[str, object]]:
         if float(row["BASELINE_MEDIAN"]) > 0
     }
     sample_norm = normalized_counts(counts, baselines)
-    region = args.region
-
     rows: list[dict[str, object]] = []
     missing_background = 0
     for interval in sorted(counts, key=lambda item: (item[0], item[1], item[2])):
@@ -315,14 +418,21 @@ def nice_ticks(start: int, end: int, max_ticks: int = 8) -> list[int]:
     return ticks
 
 
-def write_svg_plot(rows: list[dict[str, object]], output: Path, title: str, signal: str, region: Interval) -> None:
+def write_svg_plot(
+    rows: list[dict[str, object]],
+    output: Path,
+    title: str,
+    signal: str,
+    region: Interval,
+    transcript: TranscriptAnnotation | None = None,
+) -> None:
     """Write a simple SVG plot for the sample and background."""
     width = 1400
     height = 620
     left = 95
     right = 45
     top = 72
-    bottom = 110
+    bottom = 110 if transcript is None else 180
     plot_width = width - left - right
     plot_height = height - top - bottom
     region_start = region[1]
@@ -410,9 +520,71 @@ def write_svg_plot(rows: list[dict[str, object]], output: Path, title: str, sign
             f"<title>{html.escape(title_text)}</title></circle>"
         )
 
+    if transcript is not None:
+        track_y = height - 95
+        exon_height = 18
+        exon_top = track_y - exon_height / 2
+        arrow_forward = transcript.strand == "+"
+        arrow_exon_gap = 12.0
+        arrow_size_x = 6.0
+        arrow_size_y = 4.0
+
+        def add_arrow(x_pos: float) -> None:
+            if arrow_forward:
+                points = (
+                    f"{x_pos - arrow_size_x:.2f},{track_y - arrow_size_y:.2f} "
+                    f"{x_pos + arrow_size_x:.2f},{track_y:.2f} "
+                    f"{x_pos - arrow_size_x:.2f},{track_y + arrow_size_y:.2f}"
+                )
+            else:
+                points = (
+                    f"{x_pos + arrow_size_x:.2f},{track_y - arrow_size_y:.2f} "
+                    f"{x_pos - arrow_size_x:.2f},{track_y:.2f} "
+                    f"{x_pos + arrow_size_x:.2f},{track_y + arrow_size_y:.2f}"
+                )
+            elements.append(f'<polygon points="{points}" fill="#5b6472"/>')
+
+        genomic_exons = sorted(transcript.exons, key=lambda exon: exon.start)
+        spans = [
+            (left.end, right.start)
+            for left, right in zip(genomic_exons, genomic_exons[1:])
+            if right.start > left.end
+        ]
+
+        for span_start, span_end in spans:
+            x_start = x_for(float(span_start))
+            x_end = x_for(float(span_end))
+            if x_end < x_start:
+                x_start, x_end = x_end, x_start
+            elements.append(
+                f'<line x1="{x_start:.2f}" y1="{track_y}" x2="{x_end:.2f}" y2="{track_y}" stroke="#5b6472" stroke-width="2"/>'
+            )
+            arrow_start = x_start + arrow_exon_gap + arrow_size_x
+            arrow_end = x_end - arrow_exon_gap - arrow_size_x
+            if arrow_end <= arrow_start:
+                continue
+            span_width = abs(arrow_end - arrow_start)
+            arrow_count = max(1, int(span_width / 90))
+            for index in range(arrow_count):
+                fraction = (index + 1) / (arrow_count + 1)
+                add_arrow(arrow_start + fraction * (arrow_end - arrow_start))
+
+        for exon in transcript.exons:
+            exon_start = x_for(exon.start)
+            exon_end = x_for(exon.end)
+            exon_x = min(exon_start, exon_end)
+            exon_width = max(1.0, abs(exon_end - exon_start))
+            exon_mid = exon_x + exon_width / 2
+            elements.extend(
+                [
+                    f'<rect x="{exon_x:.2f}" y="{exon_top:.2f}" width="{exon_width:.2f}" height="{exon_height:.2f}" rx="3" ry="3" fill="#1f2933"/>',
+                    f'<text x="{exon_mid:.2f}" y="{exon_top - 4:.2f}" text-anchor="middle" font-size="11" font-weight="700">{exon.number}</text>',
+                ]
+            )
+
     elements.extend(
         [
-            f'<text x="{width / 2}" y="{height - 24}" text-anchor="middle" font-size="14">Genomic coordinate</text>',
+            f'<text x="{width / 2}" y="{height - (34 if transcript is not None else 24)}" text-anchor="middle" font-size="14" font-weight="700">{html.escape(transcript.transcript_id) if transcript is not None else "Genomic coordinate"}</text>',
             f'<text x="24" y="{top + plot_height / 2}" text-anchor="middle" font-size="14" transform="rotate(-90 24 {top + plot_height / 2})">{html.escape(y_axis_label)}</text>',
             f'<rect x="{width - 322}" y="{top - 8}" width="15" height="15" fill="#c8d2df" opacity="0.85"/>',
             f'<text class="legend-label" x="{width - 300}" y="{top + 4}">background band</text>',
@@ -430,11 +602,26 @@ def write_svg_plot(rows: list[dict[str, object]], output: Path, title: str, sign
 
 def plot_sample(args: argparse.Namespace) -> int:
     """Plot one sample against the background."""
-    rows = rows_for_plot(args)
+    transcript: TranscriptAnnotation | None = None
+    region = args.region
+    if args.transcript is not None:
+        transcript = load_transcript_annotation(args.gtf, args.transcript)
+        region = (transcript.contig, transcript.start, transcript.end)
+
+    rows = rows_for_plot(args, region)
     if not rows:
         raise SystemExit("No intervals with background statistics overlap the selected region.")
 
-    write_svg_plot(rows, args.output, "GATK Germline CNV read-count signal", "log2-ratio", args.region)
+    if transcript is not None:
+        row_starts = [int(row["start"]) for row in rows]
+        row_ends = [int(row["end"]) for row in rows]
+        region = (transcript.contig, min(row_starts), max(row_ends))
+
+    title = "GATK Germline CNV read-count signal"
+    if transcript is not None:
+        title = f"{title} - {transcript.gene_name}"
+
+    write_svg_plot(rows, args.output, title, "log2-ratio", region, transcript=transcript)
     print(f"Plotted intervals: {len(rows)}")
     print(f"Wrote: {args.output}")
     return 0
