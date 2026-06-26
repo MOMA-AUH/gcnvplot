@@ -367,3 +367,72 @@ def test_plot_reverse_transcript_arrows_do_not_touch_exons(
         "Plotted intervals: 2\n"
         f"Wrote: {output_path}\n"
     )
+
+
+def test_plot_transcript_keeps_full_transcript_width_when_exons_are_uncovered(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    background_path = tmp_path / "background.tsv"
+    background_path.write_text(
+        "\n".join(
+            [
+                "# normalization=median-of-ratios",
+                "# baseline=median-positive-count",
+                "# samples=2",
+                "# lower_percentile=5",
+                "# upper_percentile=95",
+                "CONTIG\tSTART\tEND\tBASELINE_MEDIAN\tN\tBG_NORM_MEAN\tBG_NORM_MEDIAN\tBG_NORM_SD\tBG_NORM_P5\tBG_NORM_P95",
+                "chr1\t100\t199\t12.5\t2\t12.5\t12.5\t0\t12.5\t12.5",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    sample_path = tmp_path / "sample.tsv"
+    write_read_counts(
+        sample_path,
+        [
+            ("chr1", 100, 199, 10),
+        ],
+    )
+    gtf_path = tmp_path / "sparse_transcript.gtf.gz"
+    write_gtf_gz(
+        gtf_path,
+        [
+            'chr1\tsource\ttranscript\t100\t400\t.\t+\t.\tgene_id "GENE1"; gene_name "MYGENE"; transcript_id "SPARSE1";',
+            'chr1\tsource\texon\t100\t120\t.\t+\t.\tgene_id "GENE1"; gene_name "MYGENE"; transcript_id "SPARSE1"; exon_number "1";',
+            'chr1\tsource\texon\t350\t400\t.\t+\t.\tgene_id "GENE1"; gene_name "MYGENE"; transcript_id "SPARSE1"; exon_number "2";',
+        ],
+    )
+    output_path = tmp_path / "plot.svg"
+
+    assert (
+        cli.main(
+            [
+                "plot",
+                "--read-counts",
+                str(sample_path),
+                "--background",
+                str(background_path),
+                "--transcript",
+                "SPARSE1",
+                "--gtf",
+                str(gtf_path),
+                "--output",
+                str(output_path),
+            ]
+        )
+        == 0
+    )
+
+    svg = output_path.read_text(encoding="utf-8")
+    exon_x_ranges = svg_exon_x_ranges(svg)
+    assert len(exon_x_ranges) == 2
+    assert exon_x_ranges[0][0] >= 95.0
+    assert exon_x_ranges[1][1] <= 1355.0
+    assert exon_x_ranges[1][0] > exon_x_ranges[0][1]
+
+    assert capsys.readouterr().out == (
+        "Plotted intervals: 1\n"
+        f"Wrote: {output_path}\n"
+    )

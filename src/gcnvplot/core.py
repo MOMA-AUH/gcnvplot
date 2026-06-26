@@ -612,11 +612,6 @@ def plot_sample(args: argparse.Namespace) -> int:
     if not rows:
         raise SystemExit("No intervals with background statistics overlap the selected region.")
 
-    if transcript is not None:
-        row_starts = [int(row["start"]) for row in rows]
-        row_ends = [int(row["end"]) for row in rows]
-        region = (transcript.contig, min(row_starts), max(row_ends))
-
     title = "GATK Germline CNV read-count signal"
     if transcript is not None:
         title = f"{title} - {transcript.gene_name}"
