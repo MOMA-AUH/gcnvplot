@@ -55,12 +55,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     region_or_transcript.add_argument(
         "--transcript",
-        help="Transcript ID to plot using exon coordinates from a GENCODE GTF.",
+        help="Transcript ID to plot using exon coordinates from a GTF file.",
     )
     plot.add_argument(
         "--gtf",
         type=Path,
-        help="GENCODE GTF file for --transcript; gzipped files are supported.",
+        help="GTF file for --transcript; gzipped files are supported.",
     )
     plot.add_argument("--output", type=Path, required=True, help="SVG output path.")
     plot.set_defaults(handler=plot_sample)
