@@ -153,7 +153,7 @@ def test_plot_requires_output(tmp_path: Path, capsys: pytest.CaptureFixture[str]
         )
 
     assert exc_info.value.code == 2
-    assert "the following arguments are required: --region" in capsys.readouterr().err
+    assert "the following arguments are required: --output" in capsys.readouterr().err
 
 
 def test_plot_log2_ratio_writes_svg_with_zero_centered_axis(
