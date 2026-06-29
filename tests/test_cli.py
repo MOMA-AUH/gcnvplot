@@ -565,6 +565,9 @@ def test_plot_transcript_prunes_overlapping_exon_labels(
     svg = output_path.read_text(encoding="utf-8")
     exon_label_positions = svg_exon_label_positions(svg)
     assert 1 <= len(exon_label_positions) < 7
+    exon_numbers = {number for number, _x, _y in exon_label_positions}
+    assert 1 in exon_numbers
+    assert 7 in exon_numbers
     xs = sorted(x for _number, x, _y in exon_label_positions)
     assert all(right - left >= 12.0 for left, right in zip(xs, xs[1:]))
 

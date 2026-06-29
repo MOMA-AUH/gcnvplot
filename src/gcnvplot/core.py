@@ -641,7 +641,8 @@ def write_svg_plot(
         label_base_y = exon_top - 4.0
         label_padding = 4.0
         label_min_gap = 6.0
-        label_specs: list[tuple[int, float, float, float, float]] = []
+        label_specs: list[tuple[int, float, float, float, float, int]] = []
+        last_exon_number = len(transcript.exons)
         for exon in transcript.exons:
             exon_start = x_for(exon.start)
             exon_end = x_for(exon.end)
@@ -652,16 +653,41 @@ def write_svg_plot(
             label_width = max(8.0, 6.5 * len(label_text))
             label_left = exon_mid - label_width / 2 - label_padding
             label_right = exon_mid + label_width / 2 + label_padding
-            label_specs.append((exon.number, exon_mid, label_width, label_left, label_right))
+            priority = 3 if exon.number in {1, last_exon_number} else 1
+            label_specs.append((exon.number, exon_mid, label_width, label_left, label_right, priority))
 
-        label_specs.sort(key=lambda spec: (spec[3], spec[4], spec[0]))
+        label_specs.sort(key=lambda spec: (spec[4], spec[3], spec[0]))
+        compatible_indices: list[int] = []
+        for index, (_exon_number, _exon_mid, _label_width, label_left, _label_right, _priority) in enumerate(label_specs):
+            compatible_index = -1
+            for previous_index in range(index - 1, -1, -1):
+                previous_right = label_specs[previous_index][4]
+                if previous_right + label_min_gap < label_left:
+                    compatible_index = previous_index
+                    break
+            compatible_indices.append(compatible_index)
+
+        best_scores: list[float] = [0.0] * len(label_specs)
+        take_label: list[bool] = [False] * len(label_specs)
+        for index, (_exon_number, _exon_mid, _label_width, _label_left, _label_right, priority) in enumerate(label_specs):
+            include_score = priority + (best_scores[compatible_indices[index]] if compatible_indices[index] >= 0 else 0.0)
+            exclude_score = best_scores[index - 1] if index > 0 else 0.0
+            if include_score > exclude_score:
+                best_scores[index] = include_score
+                take_label[index] = True
+            else:
+                best_scores[index] = exclude_score
+
         label_positions: list[tuple[int, float, float]] = []
-        current_right: float | None = None
-        for exon_number, exon_mid, _label_width, label_left, label_right in label_specs:
-            if current_right is not None and label_left <= current_right + label_min_gap:
+        index = len(label_specs) - 1
+        while index >= 0:
+            if not take_label[index]:
+                index -= 1
                 continue
+            exon_number, exon_mid, _label_width, _label_left, _label_right, _priority = label_specs[index]
             label_positions.append((exon_number, exon_mid, label_base_y))
-            current_right = label_right
+            index = compatible_indices[index]
+        label_positions.reverse()
 
         for exon_number, label_x, label_y in label_positions:
             elements.append(
