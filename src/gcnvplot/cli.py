@@ -62,6 +62,11 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         help="GTF file for --transcript; gzipped files are supported.",
     )
+    plot.add_argument(
+        "--highlight",
+        type=parse_region,
+        help="Optional genomic region to highlight as a semi-transparent band.",
+    )
     plot.add_argument("--output", type=Path, required=True, help="SVG output path.")
     plot.set_defaults(handler=plot_sample)
     return parser

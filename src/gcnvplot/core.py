@@ -424,6 +424,7 @@ def write_svg_plot(
     title: str,
     signal: str,
     region: Interval,
+    highlight: Interval | None = None,
     transcript: TranscriptAnnotation | None = None,
 ) -> None:
     """Write a simple SVG plot for the sample and background."""
@@ -461,6 +462,15 @@ def write_svg_plot(
     sample_points = " ".join(f"{x_for(float(row['mid'])):.2f},{y_for(float(row['signal'])):.2f}" for row in points)
     baseline_value = 0.0
 
+    highlight_start: float | None = None
+    highlight_end: float | None = None
+    if highlight is not None and highlight[0] == region[0]:
+        clipped_start = max(region_start, highlight[1])
+        clipped_end = min(region_end, highlight[2])
+        if clipped_start < clipped_end:
+            highlight_start = x_for(float(clipped_start))
+            highlight_end = x_for(float(clipped_end))
+
     y_axis_label = "Log2(sample/background)"
     elements = [
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">',
@@ -472,12 +482,20 @@ def write_svg_plot(
         ".sample { fill: none; stroke: #127c78; stroke-width: 2.2; }",
         ".point { fill: #127c78; stroke: white; stroke-width: 1.2; }",
         ".baseline { stroke: #5b6472; stroke-width: 2; stroke-dasharray: 6 5; }",
+        ".highlight-band { fill: #f59e0b; opacity: 0.28; stroke: #b45309; stroke-width: 1.1; }",
         ".legend-label { font-size: 12px; }",
         "</style>",
         f'<rect width="{width}" height="{height}" fill="white"/>',
         f'<text x="{width / 2}" y="30" text-anchor="middle" font-size="21" font-weight="700">{html.escape(title)}</text>',
         f'<text x="{width / 2}" y="53" text-anchor="middle" font-size="13">{html.escape(y_axis_label)}</text>',
     ]
+
+    if highlight_start is not None and highlight_end is not None:
+        band_x = min(highlight_start, highlight_end)
+        band_width = abs(highlight_end - highlight_start)
+        elements.append(
+            f'<rect class="highlight-band" x="{band_x:.2f}" y="{top}" width="{band_width:.2f}" height="{height - bottom - top:.2f}"/>'
+        )
 
     for i in range(6):
         value = y_min + i * (y_max - y_min) / 5
@@ -573,6 +591,15 @@ def write_svg_plot(
                 fraction = (index + 1) / (arrow_count + 1)
                 add_arrow(arrow_start + fraction * (arrow_end - arrow_start))
 
+        if highlight_start is not None and highlight_end is not None:
+            track_highlight_y = exon_top - 18
+            track_highlight_h = exon_height + 30
+            band_x = min(highlight_start, highlight_end)
+            band_width = abs(highlight_end - highlight_start)
+            elements.append(
+                f'<rect class="highlight-band" x="{band_x:.2f}" y="{track_highlight_y:.2f}" width="{band_width:.2f}" height="{track_highlight_h:.2f}"/>'
+            )
+
         for exon in transcript.exons:
             exon_start = x_for(exon.start)
             exon_end = x_for(exon.end)
@@ -618,6 +645,7 @@ def write_svg_plot(
         [
             f'<text x="{width / 2}" y="{height - (34 if transcript is not None else 24)}" text-anchor="middle" font-size="14" font-weight="700">{html.escape(transcript.transcript_id) if transcript is not None else "Genomic coordinate"}</text>',
             f'<text x="24" y="{top + plot_height / 2}" text-anchor="middle" font-size="14" transform="rotate(-90 24 {top + plot_height / 2})">{html.escape(y_axis_label)}</text>',
+            f'<rect x="{width - 332}" y="{top - 16}" width="167" height="82" fill="white"/>',
             f'<rect x="{width - 322}" y="{top - 8}" width="15" height="15" fill="#c8d2df" opacity="0.85"/>',
             f'<text class="legend-label" x="{width - 300}" y="{top + 4}">background band</text>',
             f'<line x1="{width - 322}" y1="{top + 24}" x2="{width - 304}" y2="{top + 24}" stroke="#5b6472" stroke-width="2" stroke-dasharray="6 5"/>',
@@ -648,7 +676,7 @@ def plot_sample(args: argparse.Namespace) -> int:
     if transcript is not None:
         title = f"{title} - {transcript.gene_name}"
 
-    write_svg_plot(rows, args.output, title, "log2-ratio", region, transcript=transcript)
+    write_svg_plot(rows, args.output, title, "log2-ratio", region, highlight=args.highlight, transcript=transcript)
     print(f"Plotted intervals: {len(rows)}")
     print(f"Wrote: {args.output}")
     return 0

@@ -67,6 +67,15 @@ def svg_x_axis_ticks(svg: str) -> list[float]:
     return ticks
 
 
+def svg_highlight_bands(svg: str) -> list[tuple[float, float, float, float]]:
+    """Return highlight band rectangles as (x, y, width, height)."""
+    bands: list[tuple[float, float, float, float]] = []
+    pattern = r'<rect class="highlight-band" x="([0-9.]+)" y="([0-9.]+)" width="([0-9.]+)" height="([0-9.]+)"/>'
+    for x_text, y_text, width_text, height_text in re.findall(pattern, svg):
+        bands.append((float(x_text), float(y_text), float(width_text), float(height_text)))
+    return bands
+
+
 def test_main_version(capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit) as exc_info:
         cli.main(["--version"])
@@ -222,6 +231,8 @@ def test_plot_log2_ratio_writes_svg_with_zero_centered_axis(
                 str(background_path),
                 "--region",
                 "chr1:100-299",
+                "--highlight",
+                "chr1:150-250",
                 "--output",
                 str(output_path),
             ]
@@ -237,6 +248,8 @@ def test_plot_log2_ratio_writes_svg_with_zero_centered_axis(
     assert "Log2(sample/background)" in svg
     assert "SIGNAL=-0.584386" in svg
     assert "SIGNAL=0.41489328" in svg
+    highlight_bands = svg_highlight_bands(svg)
+    assert len(highlight_bands) == 1
 
     assert capsys.readouterr().out == (
         "Plotted intervals: 2\n"
@@ -295,6 +308,8 @@ def test_plot_transcript_writes_exon_track_and_gene_name(
                 "TX1",
                 "--gtf",
                 str(gtf_path),
+                "--highlight",
+                "chr1:150-250",
                 "--output",
                 str(output_path),
             ]
@@ -310,6 +325,8 @@ def test_plot_transcript_writes_exon_track_and_gene_name(
     assert "transcript-arrow-forward" not in svg
     assert "rotate(-35" not in svg
     assert svg_x_axis_ticks(svg)
+    highlight_bands = svg_highlight_bands(svg)
+    assert len(highlight_bands) == 2
     assert ">1</text>" in svg
     assert ">2</text>" in svg
     assert "chr1:100-199" in svg
