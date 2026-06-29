@@ -45,6 +45,28 @@ def svg_exon_x_ranges(svg: str) -> list[tuple[float, float]]:
     return ranges
 
 
+def svg_exon_label_positions(svg: str) -> list[tuple[int, float, float]]:
+    """Return exon number labels as (number, x, y) tuples."""
+    positions: list[tuple[int, float, float]] = []
+    pattern = (
+        r'<text x="([0-9.]+)" y="([0-9.]+)" '
+        r'text-anchor="middle" font-size="11" font-weight="700">([0-9]+)</text>'
+    )
+    for x_text, y_text, label_text in re.findall(pattern, svg):
+        positions.append((int(label_text), float(x_text), float(y_text)))
+    return positions
+
+
+def svg_x_axis_ticks(svg: str) -> list[float]:
+    """Return x positions of genomic coordinate tick marks."""
+    ticks: list[float] = []
+    pattern = r'<line class="x-axis-tick" x1="([0-9.]+)" y1="([0-9.]+)" x2="([0-9.]+)" y2="([0-9.]+)" stroke="#1f2933" stroke-width="1.1"/>'
+    for x1_text, _y1_text, x2_text, _y2_text in re.findall(pattern, svg):
+        ticks.append(float(x1_text))
+        assert float(x1_text) == float(x2_text)
+    return ticks
+
+
 def test_main_version(capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit) as exc_info:
         cli.main(["--version"])
@@ -286,6 +308,8 @@ def test_plot_transcript_writes_exon_track_and_gene_name(
     assert "Genomic coordinate" not in svg
     assert "5&#x27;" not in svg
     assert "transcript-arrow-forward" not in svg
+    assert "rotate(-35" not in svg
+    assert svg_x_axis_ticks(svg)
     assert ">1</text>" in svg
     assert ">2</text>" in svg
     assert "chr1:100-199" in svg
@@ -434,5 +458,155 @@ def test_plot_transcript_keeps_full_transcript_width_when_exons_are_uncovered(
 
     assert capsys.readouterr().out == (
         "Plotted intervals: 1\n"
+        f"Wrote: {output_path}\n"
+    )
+
+
+def test_plot_transcript_prunes_overlapping_exon_labels(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    background_path = tmp_path / "background.tsv"
+    background_path.write_text(
+        "\n".join(
+            [
+                "# normalization=median-of-ratios",
+                "# baseline=median-positive-count",
+                "# samples=2",
+                "# lower_percentile=5",
+                "# upper_percentile=95",
+                "CONTIG\tSTART\tEND\tBASELINE_MEDIAN\tN\tBG_NORM_MEAN\tBG_NORM_MEDIAN\tBG_NORM_SD\tBG_NORM_P5\tBG_NORM_P95",
+                "chr1\t100\t199\t12.5\t2\t12.5\t12.5\t0\t12.5\t12.5",
+                "chr1\t200\t299\t25\t2\t25\t25\t0\t25\t25",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    sample_path = tmp_path / "sample.tsv"
+    write_read_counts(
+        sample_path,
+        [
+            ("chr1", 100, 199, 10),
+            ("chr1", 200, 299, 40),
+        ],
+    )
+    gtf_path = tmp_path / "close_exons.gtf.gz"
+    write_gtf_gz(
+        gtf_path,
+        [
+            'chr1\tsource\ttranscript\t100\t10000\t.\t+\t.\tgene_id "GENE1"; gene_name "MYGENE"; transcript_id "CLOSE1";',
+            'chr1\tsource\texon\t100\t110\t.\t+\t.\tgene_id "GENE1"; gene_name "MYGENE"; transcript_id "CLOSE1"; exon_number "1";',
+            'chr1\tsource\texon\t111\t121\t.\t+\t.\tgene_id "GENE1"; gene_name "MYGENE"; transcript_id "CLOSE1"; exon_number "2";',
+            'chr1\tsource\texon\t122\t132\t.\t+\t.\tgene_id "GENE1"; gene_name "MYGENE"; transcript_id "CLOSE1"; exon_number "3";',
+            'chr1\tsource\texon\t133\t143\t.\t+\t.\tgene_id "GENE1"; gene_name "MYGENE"; transcript_id "CLOSE1"; exon_number "4";',
+            'chr1\tsource\texon\t144\t154\t.\t+\t.\tgene_id "GENE1"; gene_name "MYGENE"; transcript_id "CLOSE1"; exon_number "5";',
+            'chr1\tsource\texon\t155\t165\t.\t+\t.\tgene_id "GENE1"; gene_name "MYGENE"; transcript_id "CLOSE1"; exon_number "6";',
+            'chr1\tsource\texon\t9950\t10000\t.\t+\t.\tgene_id "GENE1"; gene_name "MYGENE"; transcript_id "CLOSE1"; exon_number "7";',
+        ],
+    )
+    output_path = tmp_path / "plot.svg"
+
+    assert (
+        cli.main(
+            [
+                "plot",
+                "--read-counts",
+                str(sample_path),
+                "--background",
+                str(background_path),
+                "--transcript",
+                "CLOSE1",
+                "--gtf",
+                str(gtf_path),
+                "--output",
+                str(output_path),
+            ]
+        )
+        == 0
+    )
+
+    svg = output_path.read_text(encoding="utf-8")
+    exon_label_positions = svg_exon_label_positions(svg)
+    assert 1 <= len(exon_label_positions) < 7
+    xs = sorted(x for _number, x, _y in exon_label_positions)
+    assert all(right - left >= 12.0 for left, right in zip(xs, xs[1:]))
+
+    assert capsys.readouterr().out == (
+        "Plotted intervals: 2\n"
+        f"Wrote: {output_path}\n"
+    )
+
+
+def test_plot_reverse_transcript_prunes_overlapping_exon_labels(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    background_path = tmp_path / "background.tsv"
+    background_path.write_text(
+        "\n".join(
+            [
+                "# normalization=median-of-ratios",
+                "# baseline=median-positive-count",
+                "# samples=2",
+                "# lower_percentile=5",
+                "# upper_percentile=95",
+                "CONTIG\tSTART\tEND\tBASELINE_MEDIAN\tN\tBG_NORM_MEAN\tBG_NORM_MEDIAN\tBG_NORM_SD\tBG_NORM_P5\tBG_NORM_P95",
+                "chr1\t100\t199\t12.5\t2\t12.5\t12.5\t0\t12.5\t12.5",
+                "chr1\t200\t299\t25\t2\t25\t25\t0\t25\t25",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    sample_path = tmp_path / "sample.tsv"
+    write_read_counts(
+        sample_path,
+        [
+            ("chr1", 100, 199, 10),
+            ("chr1", 200, 299, 40),
+        ],
+    )
+    gtf_path = tmp_path / "reverse_pairs.gtf.gz"
+    write_gtf_gz(
+        gtf_path,
+        [
+            'chr1\tsource\ttranscript\t100\t10000\t.\t-\t.\tgene_id "GENE1"; gene_name "MYGENE"; transcript_id "RTX1";',
+            'chr1\tsource\texon\t9950\t10000\t.\t-\t.\tgene_id "GENE1"; gene_name "MYGENE"; transcript_id "RTX1"; exon_number "1";',
+            'chr1\tsource\texon\t100\t110\t.\t-\t.\tgene_id "GENE1"; gene_name "MYGENE"; transcript_id "RTX1"; exon_number "6";',
+            'chr1\tsource\texon\t111\t121\t.\t-\t.\tgene_id "GENE1"; gene_name "MYGENE"; transcript_id "RTX1"; exon_number "5";',
+            'chr1\tsource\texon\t122\t132\t.\t-\t.\tgene_id "GENE1"; gene_name "MYGENE"; transcript_id "RTX1"; exon_number "4";',
+            'chr1\tsource\texon\t133\t143\t.\t-\t.\tgene_id "GENE1"; gene_name "MYGENE"; transcript_id "RTX1"; exon_number "3";',
+            'chr1\tsource\texon\t144\t154\t.\t-\t.\tgene_id "GENE1"; gene_name "MYGENE"; transcript_id "RTX1"; exon_number "2";',
+            'chr1\tsource\texon\t155\t165\t.\t-\t.\tgene_id "GENE1"; gene_name "MYGENE"; transcript_id "RTX1"; exon_number "7";',
+        ],
+    )
+    output_path = tmp_path / "plot.svg"
+
+    assert (
+        cli.main(
+            [
+                "plot",
+                "--read-counts",
+                str(sample_path),
+                "--background",
+                str(background_path),
+                "--transcript",
+                "RTX1",
+                "--gtf",
+                str(gtf_path),
+                "--output",
+                str(output_path),
+            ]
+        )
+        == 0
+    )
+
+    svg = output_path.read_text(encoding="utf-8")
+    exon_label_positions = svg_exon_label_positions(svg)
+    assert 1 <= len(exon_label_positions) < 7
+    xs = sorted(x for _number, x, _y in exon_label_positions)
+    assert all(right - left >= 12.0 for left, right in zip(xs, xs[1:]))
+
+    assert capsys.readouterr().out == (
+        "Plotted intervals: 2\n"
         f"Wrote: {output_path}\n"
     )

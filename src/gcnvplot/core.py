@@ -488,10 +488,14 @@ def write_svg_plot(
     for tick in nice_ticks(region_start, region_end):
         x = x_for(tick)
         elements.append(f'<line class="grid" x1="{x:.2f}" y1="{top}" x2="{x:.2f}" y2="{height - bottom}" opacity="0.45"/>')
-        label_y = height - bottom + 20
-        elements.append(
-            f'<text x="{x:.2f}" y="{label_y}" text-anchor="end" font-size="11" '
-            f'transform="rotate(-35 {x:.2f} {label_y})">{tick:,}</text>'
+        tick_y1 = height - bottom
+        tick_y2 = tick_y1 + 7
+        label_y = tick_y2 + 13
+        elements.extend(
+            [
+                f'<line class="x-axis-tick" x1="{x:.2f}" y1="{tick_y1:.2f}" x2="{x:.2f}" y2="{tick_y2:.2f}" stroke="#1f2933" stroke-width="1.1"/>',
+                f'<text class="x-axis-tick-label" x="{x:.2f}" y="{label_y:.2f}" text-anchor="middle" font-size="11">{tick:,}</text>',
+            ]
         )
 
     elements.extend(
@@ -574,12 +578,40 @@ def write_svg_plot(
             exon_end = x_for(exon.end)
             exon_x = min(exon_start, exon_end)
             exon_width = max(1.0, abs(exon_end - exon_start))
-            exon_mid = exon_x + exon_width / 2
             elements.extend(
                 [
                     f'<rect x="{exon_x:.2f}" y="{exon_top:.2f}" width="{exon_width:.2f}" height="{exon_height:.2f}" rx="3" ry="3" fill="#1f2933"/>',
-                    f'<text x="{exon_mid:.2f}" y="{exon_top - 4:.2f}" text-anchor="middle" font-size="11" font-weight="700">{exon.number}</text>',
                 ]
+            )
+
+        label_base_y = exon_top - 4.0
+        label_padding = 4.0
+        label_min_gap = 6.0
+        label_specs: list[tuple[int, float, float, float, float]] = []
+        for exon in transcript.exons:
+            exon_start = x_for(exon.start)
+            exon_end = x_for(exon.end)
+            exon_x = min(exon_start, exon_end)
+            exon_width = max(1.0, abs(exon_end - exon_start))
+            exon_mid = exon_x + exon_width / 2
+            label_text = str(exon.number)
+            label_width = max(8.0, 6.5 * len(label_text))
+            label_left = exon_mid - label_width / 2 - label_padding
+            label_right = exon_mid + label_width / 2 + label_padding
+            label_specs.append((exon.number, exon_mid, label_width, label_left, label_right))
+
+        label_specs.sort(key=lambda spec: (spec[3], spec[4], spec[0]))
+        label_positions: list[tuple[int, float, float]] = []
+        current_right: float | None = None
+        for exon_number, exon_mid, _label_width, label_left, label_right in label_specs:
+            if current_right is not None and label_left <= current_right + label_min_gap:
+                continue
+            label_positions.append((exon_number, exon_mid, label_base_y))
+            current_right = label_right
+
+        for exon_number, label_x, label_y in label_positions:
+            elements.append(
+                f'<text x="{label_x:.2f}" y="{label_y:.2f}" text-anchor="middle" font-size="11" font-weight="700">{exon_number}</text>'
             )
 
     elements.extend(
