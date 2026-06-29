@@ -27,7 +27,9 @@ For `create-background`, provide a text file with one sample read-count path per
 
 For `plot`, provide one sample read-count file, one background TSV produced by `create-background`, and a genomic region such as `chr1:100-299`. This command writes an SVG plot showing the sample log2 signal relative to the background cohort.
 
-You can also use `--transcript <TRANSCRIPT_ID>` together with `--gtf <annotations.gtf[.gz]>` to plot by transcript and add an exon track beneath the signal plot.
+You can also use `--transcript <TRANSCRIPT_ID>` together with `--gtf <annotations.gtf[.gz]>` to plot by transcript and add an exon track beneath the signal plot. If you want a custom label in the right-side info panel, pass `--sample-name <LABEL>`.
+
+The plot info panel shows `Sample` when provided, then `Gene`, `Transcript`, and `Region`, followed by a separated `Highlight` and `Exons` section when applicable.
 
 Example:
 
@@ -40,5 +42,6 @@ gcnvplot plot \
   --read-counts sample.tsv \
   --background background.tsv \
   --region chr1:100-299 \
+  --sample-name SAMPLE_01 \
   --output plot.svg
 ```
