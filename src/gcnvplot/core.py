@@ -50,6 +50,15 @@ class TranscriptAnnotation:
     exons: list[TranscriptExon]
 
 
+@dataclass(frozen=True)
+class BackgroundSummary:
+    """Background intervals plus metadata used in plots."""
+
+    rows: dict[Interval, dict[str, str]]
+    lower_percentile: int | None = None
+    upper_percentile: int | None = None
+
+
 def median(values: list[float]) -> float:
     """Return the median of a non-empty list."""
     ordered = sorted(values)
@@ -199,11 +208,17 @@ def parse_region(value: str) -> Interval:
     return contig, start, end
 
 
-def parse_background(path: Path) -> dict[Interval, dict[str, str]]:
+def parse_background(path: Path) -> BackgroundSummary:
     """Parse a background TSV created by create-background."""
+    lower_percentile: int | None = None
+    upper_percentile: int | None = None
     with open_text(path) as handle:
         for line in handle:
             if line.startswith("#"):
+                if line.startswith("# lower_percentile="):
+                    lower_percentile = int(line.split("=", 1)[1])
+                elif line.startswith("# upper_percentile="):
+                    upper_percentile = int(line.split("=", 1)[1])
                 continue
             header = line.rstrip("\n").split("\t")
             if header != BACKGROUND_FIELDS:
@@ -217,7 +232,11 @@ def parse_background(path: Path) -> dict[Interval, dict[str, str]]:
         for row in reader:
             interval = (row["CONTIG"], int(row["START"]), int(row["END"]))
             background[interval] = row
-    return background
+    return BackgroundSummary(
+        rows=background,
+        lower_percentile=lower_percentile,
+        upper_percentile=upper_percentile,
+    )
 
 
 def parse_gtf_attributes(text: str) -> dict[str, str]:
@@ -353,10 +372,12 @@ def build_background(args: argparse.Namespace) -> int:
     return 0
 
 
-def rows_for_plot(args: argparse.Namespace, region: Interval) -> list[dict[str, object]]:
+def rows_for_plot(
+    args: argparse.Namespace, region: Interval, background_summary: BackgroundSummary
+) -> list[dict[str, object]]:
     """Join one sample with the background for plotting."""
     counts = parse_read_counts(args.read_counts)
-    background = parse_background(args.background)
+    background = background_summary.rows
     baselines = {
         interval: float(row["BASELINE_MEDIAN"])
         for interval, row in background.items()
@@ -424,6 +445,8 @@ def write_svg_plot(
     title: str,
     signal: str,
     region: Interval,
+    background_summary: BackgroundSummary,
+    sample_name: str | None = None,
     highlight: Interval | None = None,
     transcript: TranscriptAnnotation | None = None,
 ) -> None:
@@ -431,10 +454,12 @@ def write_svg_plot(
     width = 1400
     height = 620
     left = 95
-    right = 45
     top = 72
     bottom = 110 if transcript is None else 180
-    plot_width = width - left - right
+    panel_width = 304
+    panel_gap = 22
+    plot_right = width - panel_width - panel_gap
+    plot_width = plot_right - left
     plot_height = height - top - bottom
     region_start = region[1]
     region_end = region[2]
@@ -471,7 +496,7 @@ def write_svg_plot(
             highlight_start = x_for(float(clipped_start))
             highlight_end = x_for(float(clipped_end))
 
-    y_axis_label = "Log2(sample/background)"
+    y_axis_label = "log2(sample/background)"
     elements = [
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">',
         "<style>",
@@ -483,11 +508,13 @@ def write_svg_plot(
         ".point { fill: #127c78; stroke: white; stroke-width: 1.2; }",
         ".baseline { stroke: #5b6472; stroke-width: 2; stroke-dasharray: 6 5; }",
         ".highlight-band { fill: #f59e0b; opacity: 0.28; stroke: #b45309; stroke-width: 1.1; }",
-        ".legend-label { font-size: 12px; }",
+        ".panel { fill: #ffffff; stroke: #d8dee4; stroke-width: 1.2; }",
+        ".panel-title { font-size: 14px; font-weight: 700; }",
+        ".panel-label { font-size: 12px; font-weight: 700; }",
+        ".panel-text { font-size: 12px; }",
+        ".panel-separator { stroke: #d8dee4; stroke-width: 1.2; }",
         "</style>",
         f'<rect width="{width}" height="{height}" fill="white"/>',
-        f'<text x="{width / 2}" y="30" text-anchor="middle" font-size="21" font-weight="700">{html.escape(title)}</text>',
-        f'<text x="{width / 2}" y="53" text-anchor="middle" font-size="13">{html.escape(y_axis_label)}</text>',
     ]
 
     if highlight_start is not None and highlight_end is not None:
@@ -500,7 +527,7 @@ def write_svg_plot(
     for i in range(6):
         value = y_min + i * (y_max - y_min) / 5
         y = y_for(value)
-        elements.append(f'<line class="grid" x1="{left}" y1="{y:.2f}" x2="{width - right}" y2="{y:.2f}"/>')
+        elements.append(f'<line class="grid" x1="{left}" y1="{y:.2f}" x2="{plot_right}" y2="{y:.2f}"/>')
         elements.append(f'<text x="{left - 12}" y="{y + 4:.2f}" text-anchor="end" font-size="12">{value:.3g}</text>')
 
     for tick in nice_ticks(region_start, region_end):
@@ -519,10 +546,10 @@ def write_svg_plot(
     elements.extend(
         [
             f'<polygon class="ribbon" points="{ribbon_points}"/>',
-            f'<line class="baseline" x1="{left}" y1="{y_for(baseline_value):.2f}" x2="{width - right}" y2="{y_for(baseline_value):.2f}"/>',
+            f'<line class="baseline" x1="{left}" y1="{y_for(baseline_value):.2f}" x2="{plot_right}" y2="{y_for(baseline_value):.2f}"/>',
             f'<polyline class="sample" points="{sample_points}"/>',
             f'<line class="axis" x1="{left}" y1="{top}" x2="{left}" y2="{height - bottom}"/>',
-            f'<line class="axis" x1="{left}" y1="{height - bottom}" x2="{width - right}" y2="{height - bottom}"/>',
+            f'<line class="axis" x1="{left}" y1="{height - bottom}" x2="{plot_right}" y2="{height - bottom}"/>',
         ]
     )
 
@@ -643,15 +670,86 @@ def write_svg_plot(
 
     elements.extend(
         [
-            f'<text x="{width / 2}" y="{height - (34 if transcript is not None else 24)}" text-anchor="middle" font-size="14" font-weight="700">{html.escape(transcript.transcript_id) if transcript is not None else "Genomic coordinate"}</text>',
             f'<text x="24" y="{top + plot_height / 2}" text-anchor="middle" font-size="14" transform="rotate(-90 24 {top + plot_height / 2})">{html.escape(y_axis_label)}</text>',
-            f'<rect x="{width - 332}" y="{top - 16}" width="167" height="82" fill="white"/>',
-            f'<rect x="{width - 322}" y="{top - 8}" width="15" height="15" fill="#c8d2df" opacity="0.85"/>',
-            f'<text class="legend-label" x="{width - 300}" y="{top + 4}">background band</text>',
-            f'<line x1="{width - 322}" y1="{top + 24}" x2="{width - 304}" y2="{top + 24}" stroke="#5b6472" stroke-width="2" stroke-dasharray="6 5"/>',
-            f'<text class="legend-label" x="{width - 300}" y="{top + 28}">expected baseline</text>',
-            f'<circle class="point" cx="{width - 314}" cy="{top + 49}" r="5"/>',
-            f'<text class="legend-label" x="{width - 300}" y="{top + 53}">sample signal</text>',
+        ]
+    )
+
+    info_sections: list[list[tuple[str, str]]] = []
+    if sample_name is not None:
+        info_sections.append([("Sample", sample_name)])
+
+    main_section: list[tuple[str, str]] = []
+    if transcript is not None:
+        main_section.extend(
+            [
+                ("Gene", transcript.gene_name),
+                ("Transcript", transcript.transcript_id),
+            ]
+        )
+    main_section.append(("Region", f"{region[0]}:{region[1]:,}-{region[2]:,}"))
+    info_sections.append(main_section)
+
+    detail_section: list[tuple[str, str]] = []
+    if highlight_start is not None and highlight_end is not None:
+        detail_section.append(("Highlight", f"{highlight[0]}:{highlight[1]:,}-{highlight[2]:,}"))
+    if transcript is not None and highlight is not None and highlight[0] == region[0]:
+        visible_highlight_start = max(region[1], highlight[1])
+        visible_highlight_end = min(region[2], highlight[2])
+        if visible_highlight_start < visible_highlight_end:
+            covered_exons = [
+                exon.number
+                for exon in transcript.exons
+                if overlaps(exon.start, exon.end, visible_highlight_start, visible_highlight_end)
+            ]
+            if covered_exons:
+                runs: list[str] = []
+                run_start = covered_exons[0]
+                run_prev = covered_exons[0]
+                for exon_number in covered_exons[1:]:
+                    if exon_number == run_prev + 1:
+                        run_prev = exon_number
+                        continue
+                    runs.append(str(run_start) if run_start == run_prev else f"{run_start}-{run_prev}")
+                    run_start = run_prev = exon_number
+                runs.append(str(run_start) if run_start == run_prev else f"{run_start}-{run_prev}")
+                detail_section.append(("Exons", ",".join(runs)))
+    if detail_section:
+        info_sections.append(detail_section)
+
+    panel_x = plot_right + panel_gap
+    panel_y = top - 8
+    info_row_count = sum(len(section) for section in info_sections)
+    separator_count = max(0, len(info_sections) - 1)
+    panel_h = max(132, 56 + info_row_count * 20 + separator_count * 14 + 72)
+    elements[3:3] = [
+        f'<rect class="panel" x="{panel_x}" y="{panel_y}" width="{panel_width}" height="{panel_h}"/>',
+        f'<text class="panel-title" x="{panel_x + 16}" y="{panel_y + 24}">Plot Info</text>',
+    ]
+
+    info_y = panel_y + 49
+    for section_index, section in enumerate(info_sections):
+        for label, value in section:
+            elements.append(f'<text class="panel-label" x="{panel_x + 16}" y="{info_y}">{html.escape(label)}</text>')
+            elements.append(f'<text class="panel-text" x="{panel_x + 88}" y="{info_y}">{html.escape(value)}</text>')
+            info_y += 20
+        if section_index < len(info_sections) - 1:
+            separator_y = info_y - 6
+            elements.append(
+                f'<line class="panel-separator" x1="{panel_x + 16}" y1="{separator_y:.2f}" x2="{panel_x + panel_width - 16}" y2="{separator_y:.2f}"/>'
+            )
+            info_y += 14
+
+    legend_y = max(info_y + 18, panel_y + panel_h - 58)
+    panel_h = legend_y + 54 - panel_y
+    elements[3] = f'<rect class="panel" x="{panel_x}" y="{panel_y}" width="{panel_width}" height="{panel_h}"/>'
+    elements.extend(
+        [
+            f'<rect x="{panel_x + 16}" y="{legend_y - 13}" width="15" height="15" fill="#c8d2df" opacity="0.85"/>',
+            f'<text class="panel-text" x="{panel_x + 40}" y="{legend_y}">background</text>',
+            f'<line x1="{panel_x + 16}" y1="{legend_y + 23}" x2="{panel_x + 34}" y2="{legend_y + 23}" stroke="#5b6472" stroke-width="2" stroke-dasharray="6 5"/>',
+            f'<text class="panel-text" x="{panel_x + 40}" y="{legend_y + 27}">expected baseline</text>',
+            f'<circle class="point" cx="{panel_x + 24}" cy="{legend_y + 48}" r="5"/>',
+            f'<text class="panel-text" x="{panel_x + 40}" y="{legend_y + 52}">sample signal</text>',
             "</svg>",
         ]
     )
@@ -668,15 +766,22 @@ def plot_sample(args: argparse.Namespace) -> int:
         transcript = load_transcript_annotation(args.gtf, args.transcript)
         region = (transcript.contig, transcript.start, transcript.end)
 
-    rows = rows_for_plot(args, region)
+    background_summary = parse_background(args.background)
+    rows = rows_for_plot(args, region, background_summary)
     if not rows:
         raise SystemExit("No intervals with background statistics overlap the selected region.")
 
-    title = "GATK Germline CNV read-count signal"
-    if transcript is not None:
-        title = f"{title} - {transcript.gene_name}"
-
-    write_svg_plot(rows, args.output, title, "log2-ratio", region, highlight=args.highlight, transcript=transcript)
+    write_svg_plot(
+        rows,
+        args.output,
+        "Normalized GATK GermlineCNVCaller Read Counts",
+        "log2-ratio",
+        region,
+        background_summary=background_summary,
+        sample_name=args.sample_name,
+        highlight=args.highlight,
+        transcript=transcript,
+    )
     print(f"Plotted intervals: {len(rows)}")
     print(f"Wrote: {args.output}")
     return 0

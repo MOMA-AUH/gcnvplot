@@ -67,6 +67,10 @@ def build_parser() -> argparse.ArgumentParser:
         type=parse_region,
         help="Optional genomic region to highlight as a semi-transparent band.",
     )
+    plot.add_argument(
+        "--sample-name",
+        help="Optional sample label to show in the plot info panel.",
+    )
     plot.add_argument("--output", type=Path, required=True, help="SVG output path.")
     plot.set_defaults(handler=plot_sample)
     return parser

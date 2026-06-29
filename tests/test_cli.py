@@ -245,9 +245,14 @@ def test_plot_log2_ratio_writes_svg_with_zero_centered_axis(
     assert "chr1:200-299" in svg
     assert "chr2:100-199" not in svg
     assert "chr2:200-299" not in svg
-    assert "Log2(sample/background)" in svg
+    assert "log2(sample/background)" in svg
     assert "SIGNAL=-0.584386" in svg
     assert "SIGNAL=0.41489328" in svg
+    assert 'class="panel"' in svg
+    assert "Plot Info" in svg
+    assert "Region" in svg
+    assert ">background</text>" in svg
+    assert "background band" not in svg
     highlight_bands = svg_highlight_bands(svg)
     assert len(highlight_bands) == 1
 
@@ -308,6 +313,8 @@ def test_plot_transcript_writes_exon_track_and_gene_name(
                 "TX1",
                 "--gtf",
                 str(gtf_path),
+                "--sample-name",
+                "Sample A",
                 "--highlight",
                 "chr1:150-250",
                 "--output",
@@ -325,6 +332,19 @@ def test_plot_transcript_writes_exon_track_and_gene_name(
     assert "transcript-arrow-forward" not in svg
     assert "rotate(-35" not in svg
     assert svg_x_axis_ticks(svg)
+    assert 'class="panel"' in svg
+    assert "Plot Info" in svg
+    assert "Sample" in svg
+    assert "Gene" in svg
+    assert "Transcript" in svg
+    assert "Region" in svg
+    assert "Exons" in svg
+    assert "Highlight" in svg
+    assert "log2(sample/background)" in svg
+    assert ">2</text>" in svg
+    assert ">background</text>" in svg
+    assert svg.count('class="panel-separator"') == 2
+    assert svg.index("Sample") < svg.index("Gene") < svg.index("Transcript") < svg.index("Region") < svg.index("Highlight") < svg.index("Exons")
     highlight_bands = svg_highlight_bands(svg)
     assert len(highlight_bands) == 2
     assert ">1</text>" in svg
