@@ -29,7 +29,7 @@ test:
     - gcnvplot --help
 
 about:
-  home: https://github.com/micknudsen/gcnvplot
+  home: https://github.com/MOMA-AUH/gcnvplot
   summary: Command-line tools for plotting GATK germline CNV results
   license: MIT
   license_file: LICENSE
