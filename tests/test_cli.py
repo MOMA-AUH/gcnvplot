@@ -393,6 +393,68 @@ def test_plot_transcript_writes_exon_track_and_gene_name(
     )
 
 
+def test_plot_transcript_constrains_long_sample_name(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    background_path = tmp_path / "background.tsv"
+    background_path.write_text(
+        "\n".join(
+            [
+                "# normalization=median-of-ratios",
+                "# baseline=median-positive-count",
+                "# samples=2",
+                "# lower_percentile=5",
+                "# upper_percentile=95",
+                "CONTIG\tSTART\tEND\tBASELINE_MEDIAN\tN\tBG_NORM_MEAN\tBG_NORM_MEDIAN\tBG_NORM_SD\tBG_NORM_P5\tBG_NORM_P95",
+                "chr1\t100\t199\t12.5\t2\t12.5\t12.5\t0\t12.5\t12.5",
+                "chr1\t200\t299\t25\t2\t25\t25\t0\t25\t25",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    sample_path = tmp_path / "sample.tsv"
+    write_read_counts(
+        sample_path,
+        [
+            ("chr1", 100, 199, 10),
+            ("chr1", 200, 299, 40),
+        ],
+    )
+    output_path = tmp_path / "plot.svg"
+    long_sample_name = "Sample with a deliberately very long descriptive name"
+
+    assert (
+        cli.main(
+            [
+                "plot",
+                "--read-counts",
+                str(sample_path),
+                "--background",
+                str(background_path),
+                "--sample-name",
+                long_sample_name,
+                "--output",
+                str(output_path),
+                "--region",
+                "chr1:100-299",
+            ]
+        )
+        == 0
+    )
+
+    svg = output_path.read_text(encoding="utf-8")
+    assert long_sample_name in svg
+    width_match = re.search(r'<svg xmlns="http://www.w3.org/2000/svg" width="([0-9.]+)" height="620"', svg)
+    assert width_match is not None
+    assert float(width_match.group(1)) > 1400
+
+    assert capsys.readouterr().out == (
+        "Plotted intervals: 2\n"
+        f"Wrote: {output_path}\n"
+    )
+
+
 def test_plot_transcript_uses_open_points_for_non_exonic_intervals(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -606,6 +668,7 @@ def test_plot_transcript_keeps_full_transcript_width_when_exons_are_uncovered(
     assert abs(uncovered_mid - ((exon_x_ranges[1][0] + exon_x_ranges[1][1]) / 2)) < 0.1
     assert len(uncovered_marker_x_values) == 1
     assert abs(uncovered_marker_x_values[0] - uncovered_mid) < 0.1
+    assert "Uncovered exon" in svg
 
     assert capsys.readouterr().out == (
         "Plotted intervals: 1\n"

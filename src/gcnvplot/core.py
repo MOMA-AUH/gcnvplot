@@ -457,14 +457,18 @@ def write_svg_plot(
     transcript: TranscriptAnnotation | None = None,
 ) -> None:
     """Write a simple SVG plot for the sample and background."""
-    width = 1400
+    base_width = 1400
     height = 620
     left = 95
     top = 72
     bottom = 110 if transcript is None else 180
     panel_width = 304
     panel_gap = 22
-    plot_right = width - panel_width - panel_gap
+    if sample_name is not None:
+        estimated_sample_width = math.ceil(len(sample_name) * 7.2)
+        panel_width = max(panel_width, 88 + estimated_sample_width + 16)
+    plot_right = base_width - 304 - panel_gap
+    width = max(base_width, plot_right + panel_gap + panel_width)
     plot_width = plot_right - left
     plot_height = height - top - bottom
     region_start = region[1]
@@ -515,14 +519,16 @@ def write_svg_plot(
         ".point-filled { fill: #127c78; stroke: white; }",
         ".point-open { fill: white; stroke: #127c78; }",
         ".exon-covered { fill: #1f2933; }",
-        ".exon-uncovered { fill: #9ec5d6; stroke: #2f6f88; stroke-width: 1.2; }",
-        ".exon-uncovered-marker { fill: #2f6f88; }",
+        ".exon-uncovered { fill: #1f2933; }",
+        ".exon-uncovered-marker { fill: #b91c1c; }",
         ".baseline { stroke: #5b6472; stroke-width: 2; stroke-dasharray: 6 5; }",
         ".highlight-band { fill: #f59e0b; opacity: 0.28; stroke: #b45309; stroke-width: 1.1; }",
         ".panel { fill: #ffffff; stroke: #d8dee4; stroke-width: 1.2; }",
         ".panel-title { font-size: 14px; font-weight: 700; }",
         ".panel-label { font-size: 12px; font-weight: 700; }",
         ".panel-text { font-size: 12px; }",
+        ".panel-label-emphasis { font-size: 13px; font-weight: 800; }",
+        ".panel-text-emphasis { font-size: 13px; font-weight: 700; }",
         ".panel-separator { stroke: #d8dee4; stroke-width: 1.2; }",
         "</style>",
         f'<rect width="{width}" height="{height}" fill="white"/>',
@@ -590,7 +596,7 @@ def write_svg_plot(
         arrow_exon_gap = 12.0
         arrow_size_x = 6.0
         arrow_size_y = 4.0
-        uncovered_marker_size = 5.0
+        uncovered_marker_size = 6.5
         covered_exon_numbers = {
             exon.number
             for exon in transcript.exons
@@ -783,8 +789,12 @@ def write_svg_plot(
     info_y = panel_y + 49
     for section_index, section in enumerate(info_sections):
         for label, value in section:
-            elements.append(f'<text class="panel-label" x="{panel_x + 16}" y="{info_y}">{html.escape(label)}</text>')
-            elements.append(f'<text class="panel-text" x="{panel_x + 88}" y="{info_y}">{html.escape(value)}</text>')
+            label_class = "panel-label-emphasis" if label == "Sample" else "panel-label"
+            value_class = "panel-text-emphasis" if label == "Sample" else "panel-text"
+            elements.append(
+                f'<text class="{label_class}" x="{panel_x + 16}" y="{info_y}">{html.escape(label)}</text>'
+            )
+            elements.append(f'<text class="{value_class}" x="{panel_x + 88}" y="{info_y}">{html.escape(value)}</text>')
             info_y += 20
         if section_index < len(info_sections) - 1:
             separator_y = info_y - 6
@@ -793,8 +803,8 @@ def write_svg_plot(
             )
             info_y += 14
 
-    legend_y = max(info_y + 18, panel_y + panel_h - 58)
-    panel_h = legend_y + 54 - panel_y
+    legend_y = max(info_y + 18, panel_y + panel_h - 72)
+    panel_h = legend_y + 68 - panel_y
     elements[3] = f'<rect class="panel" x="{panel_x}" y="{panel_y}" width="{panel_width}" height="{panel_h}"/>'
     elements.extend(
         [
@@ -802,6 +812,8 @@ def write_svg_plot(
             f'<text class="panel-text" x="{panel_x + 40}" y="{legend_y + 4}">Overlaps exon</text>',
             f'<circle class="point point-open" cx="{panel_x + 24}" cy="{legend_y + 24}" r="5"/>',
             f'<text class="panel-text" x="{panel_x + 40}" y="{legend_y + 28}">Outside exon</text>',
+            f'<polygon class="exon-uncovered-marker" points="{panel_x + 24:.2f},{legend_y + 45.50:.2f} {panel_x + 30.5:.2f},{legend_y + 52.00:.2f} {panel_x + 17.5:.2f},{legend_y + 52.00:.2f}"/>',
+            f'<text class="panel-text" x="{panel_x + 40}" y="{legend_y + 52}">Uncovered exon</text>',
             "</svg>",
         ]
     )
