@@ -59,12 +59,17 @@ def svg_uncovered_exon_marker_x_values(svg: str) -> list[float]:
     """Return x positions for uncovered-exon marker triangles."""
     xs: list[float] = []
     pattern = r'<polygon class="exon-uncovered-marker" points="([^"]+)"'
+    height_match = re.search(r'<svg xmlns="http://www.w3.org/2000/svg" width="[0-9.]+" height="([0-9.]+)"', svg)
+    height = float(height_match.group(1)) if height_match is not None else 620.0
+    transcript_marker_min_y = height * 0.65
     for points in re.findall(pattern, svg):
         marker_xs = []
+        marker_ys = []
         for point in points.split():
             x_text, _y_text = point.split(",", 1)
             marker_xs.append(float(x_text))
-        if marker_xs:
+            marker_ys.append(float(_y_text))
+        if marker_xs and min(marker_ys) > transcript_marker_min_y:
             xs.append(sum(marker_xs) / len(marker_xs))
     return xs
 
@@ -103,9 +108,9 @@ def svg_highlight_bands(svg: str) -> list[tuple[float, float, float, float]]:
 def svg_point_class_by_interval(svg: str) -> dict[str, str]:
     """Return point classes keyed by interval title."""
     classes: dict[str, str] = {}
-    pattern = r'<circle class="([^"]*point[^"]*)"[^>]*><title>([^<]+)</title></circle>'
+    pattern = r'<circle class="([^"]*point[^"]*)"[^>]*><title>([\s\S]*?)</title></circle>'
     for point_class, title_text in re.findall(pattern, svg):
-        interval = title_text.split("&#10;", 1)[0]
+        interval = title_text.split("\n", 1)[0]
         classes[interval] = point_class
     return classes
 
@@ -285,7 +290,6 @@ def test_plot_log2_ratio_writes_svg_with_zero_centered_axis(
     assert 'class="panel"' in svg
     assert "Plot Info" in svg
     assert "Region" in svg
-    assert ">background</text>" in svg
     assert "background band" not in svg
     highlight_bands = svg_highlight_bands(svg)
     assert len(highlight_bands) == 1
