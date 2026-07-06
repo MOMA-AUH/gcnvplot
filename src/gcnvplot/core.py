@@ -673,8 +673,8 @@ def write_svg_plot(
                 elements.append(f'<polygon class="exon-uncovered-marker" points="{marker_points}"/>')
 
         label_base_y = exon_top - 4.0
-        label_padding = 4.0
-        label_min_gap = 6.0
+        label_padding = 3.0
+        label_min_gap = 4.0
         label_specs: list[tuple[int, float, float, float, float, int]] = []
         last_exon_number = len(transcript.exons)
         for exon in transcript.exons:
@@ -684,7 +684,9 @@ def write_svg_plot(
             exon_width = max(1.0, abs(exon_end - exon_start))
             exon_mid = exon_x + exon_width / 2
             label_text = str(exon.number)
-            label_width = max(8.0, 6.5 * len(label_text))
+            # Use a narrower width estimate so closely spaced exon numbers are
+            # only pruned when they would truly collide in the SVG.
+            label_width = max(7.0, 5.8 * len(label_text))
             label_left = exon_mid - label_width / 2 - label_padding
             label_right = exon_mid + label_width / 2 + label_padding
             priority = 3 if exon.number in {1, last_exon_number} else 1
