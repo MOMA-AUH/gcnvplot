@@ -45,3 +45,7 @@ gcnvplot plot \
   --sample-name SAMPLE_01 \
   --output plot.svg
 ```
+
+## Example data
+
+A tiny synthetic BRCA1 transcript example is available in [`examples/brca1_synthetic`](examples/brca1_synthetic). It demonstrates a highlighted multi-exon deletion, open dots for intervals outside exons, and an uncovered-exon marker.

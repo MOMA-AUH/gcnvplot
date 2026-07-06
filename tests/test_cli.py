@@ -459,6 +459,50 @@ def test_plot_transcript_constrains_long_sample_name(
     )
 
 
+def test_brca1_synthetic_example_renders(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    example_dir = Path(__file__).parents[1] / "examples" / "brca1_synthetic"
+    output_path = tmp_path / "brca1_synthetic.svg"
+
+    assert (
+        cli.main(
+            [
+                "plot",
+                "--read-counts",
+                str(example_dir / "sample_deletion.tsv"),
+                "--background",
+                str(example_dir / "background.tsv"),
+                "--transcript",
+                "NM_007294.4",
+                "--gtf",
+                str(example_dir / "brca1_mane_minimal.gtf"),
+                "--sample-name",
+                "Synthetic BRCA1 exon 13-15 deletion",
+                "--highlight",
+                "chr17:43070928-43076614",
+                "--output",
+                str(output_path),
+            ]
+        )
+        == 0
+    )
+
+    svg = output_path.read_text(encoding="utf-8")
+    assert "BRCA1" in svg
+    assert "Synthetic BRCA1 exon 13-15 deletion" in svg
+    assert "point point-open" in svg
+    assert "Uncovered exon" in svg
+    assert "SIGNAL=-1.0291902" in svg
+    assert '>13</text>' in svg
+    assert '>10</text>' in svg
+
+    assert capsys.readouterr().out == (
+        "Plotted intervals: 28\n"
+        f"Wrote: {output_path}\n"
+    )
+
+
 def test_plot_transcript_uses_open_points_for_non_exonic_intervals(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

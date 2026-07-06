@@ -1,0 +1,333 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1452" height="620" viewBox="0 0 1452 620">
+<style>
+text { font-family: Arial, Helvetica, sans-serif; fill: #1f2933; }
+<rect class="panel" x="1096" y="64" width="356" height="283"/>
+<text class="panel-title" x="1112" y="88">Plot Info</text>
+.axis { stroke: #1f2933; stroke-width: 1.3; }
+.grid { stroke: #d8dee4; stroke-width: 1; }
+.ribbon { fill: #c8d2df; opacity: 0.85; }
+.sample { fill: none; stroke: #127c78; stroke-width: 2.2; }
+.point { stroke-width: 1.6; }
+.point-filled { fill: #127c78; stroke: white; }
+.point-open { fill: white; stroke: #127c78; }
+.exon-covered { fill: #1f2933; }
+.exon-uncovered { fill: #1f2933; }
+.exon-uncovered-marker { fill: #b91c1c; }
+.baseline { stroke: #5b6472; stroke-width: 2; stroke-dasharray: 6 5; }
+.highlight-band { fill: #f59e0b; opacity: 0.28; stroke: #b45309; stroke-width: 1.1; }
+.panel { fill: #ffffff; stroke: #d8dee4; stroke-width: 1.2; }
+.panel-title { font-size: 14px; font-weight: 700; }
+.panel-label { font-size: 12px; font-weight: 700; }
+.panel-text { font-size: 12px; }
+.panel-label-emphasis { font-size: 13px; font-weight: 800; }
+.panel-text-emphasis { font-size: 13px; font-weight: 700; }
+.panel-separator { stroke: #d8dee4; stroke-width: 1.2; }
+</style>
+<rect width="1452" height="620" fill="white"/>
+<rect class="highlight-band" x="416.62" y="72" width="68.66" height="368.00"/>
+<line class="grid" x1="95" y1="440.00" x2="1074" y2="440.00"/>
+<text x="83" y="444.00" text-anchor="end" font-size="12">-1.12</text>
+<line class="grid" x1="95" y1="366.40" x2="1074" y2="366.40"/>
+<text x="83" y="370.40" text-anchor="end" font-size="12">-0.672</text>
+<line class="grid" x1="95" y1="292.80" x2="1074" y2="292.80"/>
+<text x="83" y="296.80" text-anchor="end" font-size="12">-0.224</text>
+<line class="grid" x1="95" y1="219.20" x2="1074" y2="219.20"/>
+<text x="83" y="223.20" text-anchor="end" font-size="12">0.224</text>
+<line class="grid" x1="95" y1="145.60" x2="1074" y2="145.60"/>
+<text x="83" y="149.60" text-anchor="end" font-size="12">0.672</text>
+<line class="grid" x1="95" y1="72.00" x2="1074" y2="72.00"/>
+<text x="83" y="76.00" text-anchor="end" font-size="12">1.12</text>
+<line class="grid" x1="163.89" y1="72" x2="163.89" y2="440" opacity="0.45"/>
+<line class="x-axis-tick" x1="163.89" y1="440.00" x2="163.89" y2="447.00" stroke="#1f2933" stroke-width="1.1"/>
+<text class="x-axis-tick-label" x="163.89" y="460.00" text-anchor="middle" font-size="11">43,050,000</text>
+<line class="grid" x1="284.66" y1="72" x2="284.66" y2="440" opacity="0.45"/>
+<line class="x-axis-tick" x1="284.66" y1="440.00" x2="284.66" y2="447.00" stroke="#1f2933" stroke-width="1.1"/>
+<text class="x-axis-tick-label" x="284.66" y="460.00" text-anchor="middle" font-size="11">43,060,000</text>
+<line class="grid" x1="405.42" y1="72" x2="405.42" y2="440" opacity="0.45"/>
+<line class="x-axis-tick" x1="405.42" y1="440.00" x2="405.42" y2="447.00" stroke="#1f2933" stroke-width="1.1"/>
+<text class="x-axis-tick-label" x="405.42" y="460.00" text-anchor="middle" font-size="11">43,070,000</text>
+<line class="grid" x1="526.18" y1="72" x2="526.18" y2="440" opacity="0.45"/>
+<line class="x-axis-tick" x1="526.18" y1="440.00" x2="526.18" y2="447.00" stroke="#1f2933" stroke-width="1.1"/>
+<text class="x-axis-tick-label" x="526.18" y="460.00" text-anchor="middle" font-size="11">43,080,000</text>
+<line class="grid" x1="646.94" y1="72" x2="646.94" y2="440" opacity="0.45"/>
+<line class="x-axis-tick" x1="646.94" y1="440.00" x2="646.94" y2="447.00" stroke="#1f2933" stroke-width="1.1"/>
+<text class="x-axis-tick-label" x="646.94" y="460.00" text-anchor="middle" font-size="11">43,090,000</text>
+<line class="grid" x1="767.70" y1="72" x2="767.70" y2="440" opacity="0.45"/>
+<line class="x-axis-tick" x1="767.70" y1="440.00" x2="767.70" y2="447.00" stroke="#1f2933" stroke-width="1.1"/>
+<text class="x-axis-tick-label" x="767.70" y="460.00" text-anchor="middle" font-size="11">43,100,000</text>
+<line class="grid" x1="888.46" y1="72" x2="888.46" y2="440" opacity="0.45"/>
+<line class="x-axis-tick" x1="888.46" y1="440.00" x2="888.46" y2="447.00" stroke="#1f2933" stroke-width="1.1"/>
+<text class="x-axis-tick-label" x="888.46" y="460.00" text-anchor="middle" font-size="11">43,110,000</text>
+<line class="grid" x1="1009.22" y1="72" x2="1009.22" y2="440" opacity="0.45"/>
+<line class="x-axis-tick" x1="1009.22" y1="440.00" x2="1009.22" y2="447.00" stroke="#1f2933" stroke-width="1.1"/>
+<text class="x-axis-tick-label" x="1009.22" y="460.00" text-anchor="middle" font-size="11">43,120,000</text>
+<polygon class="ribbon" points="101.03,227.11 113.11,229.15 135.80,225.42 153.72,223.99 177.17,227.57 249.63,226.34 325.14,228.48 337.22,224.39 377.06,227.10 418.49,225.67 447.68,228.46 458.86,223.47 484.53,227.28 520.13,226.01 658.86,224.86 670.30,227.87 682.38,224.05 694.45,226.16 706.53,228.87 717.99,224.05 734.69,227.08 765.62,225.59 818.32,227.79 830.39,224.42 846.12,226.56 957.93,225.29 1058.32,227.51 1073.44,226.16 1073.44,288.00 1058.32,286.51 957.93,289.06 846.12,287.40 830.39,290.10 818.32,286.02 765.62,288.47 734.69,287.05 717.99,290.60 706.53,284.70 694.45,287.96 682.38,290.42 670.30,285.88 658.86,289.70 520.13,287.97 484.53,286.73 458.86,291.28 447.68,285.26 418.49,288.42 377.06,286.88 337.22,290.19 325.14,285.16 249.63,287.74 177.17,285.93 153.72,290.63 135.80,288.89 113.11,284.38 101.03,286.84"/>
+<line class="baseline" x1="95" y1="256.00" x2="1074" y2="256.00"/>
+<polyline class="sample" points="101.03,239.85 113.11,253.66 135.80,270.67 153.72,229.07 177.17,220.70 249.63,246.71 325.14,260.80 337.22,278.20 377.06,248.93 418.49,397.61 447.68,425.03 458.86,440.00 484.53,411.09 520.13,237.81 658.86,283.60 670.30,246.67 682.38,224.89 694.45,233.38 706.53,258.37 717.99,273.11 734.69,242.23 765.62,263.07 818.32,229.14 830.39,249.01 846.12,275.72 957.93,286.19 1058.32,265.70 1073.44,235.66"/>
+<line class="axis" x1="95" y1="72" x2="95" y2="440"/>
+<line class="axis" x1="95" y1="440" x2="1074" y2="440"/>
+<circle class="point point-filled" cx="101.03" cy="239.85" r="4.8"><title>chr17:43044295-43045294
+COUNT=1263
+SAMPLE_NORM=1263.2088
+BG_MEDIAN_NORM=1180
+SIGNAL=0.098305418
+BACKGROUND_N=20</title></circle>
+<circle class="point point-filled" cx="113.11" cy="253.66" r="4.8"><title>chr17:43045295-43046294
+COUNT=1136
+SAMPLE_NORM=1136.1878
+BG_MEDIAN_NORM=1125
+SIGNAL=0.014276151
+BACKGROUND_N=20</title></circle>
+<circle class="point point-filled" cx="135.80" cy="270.67" r="4.8"><title>chr17:43047174-43048173
+COUNT=921
+SAMPLE_NORM=921.15223
+BG_MEDIAN_NORM=980
+SIGNAL=-0.089341209
+BACKGROUND_N=20</title></circle>
+<circle class="point point-filled" cx="153.72" cy="229.07" r="4.8"><title>chr17:43048658-43049657
+COUNT=1417
+SAMPLE_NORM=1417.2342
+BG_MEDIAN_NORM=1265
+SIGNAL=0.16393959
+BACKGROUND_N=20</title></circle>
+<circle class="point point-filled" cx="177.17" cy="220.70" r="4.8"><title>chr17:43050600-43051599
+COUNT=1056
+SAMPLE_NORM=1056.1745
+BG_MEDIAN_NORM=910
+SIGNAL=0.21490763
+BACKGROUND_N=20</title></circle>
+<circle class="point point-filled" cx="249.63" cy="246.71" r="4.8"><title>chr17:43056600-43057599
+COUNT=1045
+SAMPLE_NORM=1045.1727
+BG_MEDIAN_NORM=1005
+SIGNAL=0.056545333
+BACKGROUND_N=20</title></circle>
+<circle class="point point-filled" cx="325.14" cy="260.80" r="4.8"><title>chr17:43062853-43063852
+COUNT=1066
+SAMPLE_NORM=1066.1762
+BG_MEDIAN_NORM=1088
+SIGNAL=-0.029232404
+BACKGROUND_N=20</title></circle>
+<circle class="point point-filled" cx="337.22" cy="278.20" r="4.8"><title>chr17:43063853-43064852
+COUNT=874
+SAMPLE_NORM=874.14446
+BG_MEDIAN_NORM=960
+SIGNAL=-0.13516121
+BACKGROUND_N=20</title></circle>
+<circle class="point point-filled" cx="377.06" cy="248.93" r="4.8"><title>chr17:43067152-43068151
+COUNT=1231
+SAMPLE_NORM=1231.2035
+BG_MEDIAN_NORM=1195
+SIGNAL=0.043058232
+BACKGROUND_N=20</title></circle>
+<circle class="point point-filled" cx="418.49" cy="397.61" r="4.8"><title>chr17:43070583-43071582
+COUNT=572
+SAMPLE_NORM=572.09455
+BG_MEDIAN_NORM=1040
+SIGNAL=-0.86224669
+BACKGROUND_N=20</title></circle>
+<circle class="point point-open" cx="447.68" cy="425.03" r="4.8"><title>chr17:43073000-43073999
+COUNT=485
+SAMPLE_NORM=485.08017
+BG_MEDIAN_NORM=990
+SIGNAL=-1.0291902
+BACKGROUND_N=20</title></circle>
+<circle class="point point-filled" cx="458.86" cy="440.00" r="4.8"><title>chr17:43073926-43074925
+COUNT=522
+SAMPLE_NORM=522.08628
+BG_MEDIAN_NORM=1135
+SIGNAL=-1.1203172
+BACKGROUND_N=20</title></circle>
+<circle class="point point-filled" cx="484.53" cy="411.09" r="4.8"><title>chr17:43076052-43077051
+COUNT=504
+SAMPLE_NORM=504.08331
+BG_MEDIAN_NORM=970
+SIGNAL=-0.94430882
+BACKGROUND_N=20</title></circle>
+<circle class="point point-open" cx="520.13" cy="237.81" r="4.8"><title>chr17:43079000-43079999
+COUNT=1112
+SAMPLE_NORM=1112.1838
+BG_MEDIAN_NORM=1030
+SIGNAL=0.11074986
+BACKGROUND_N=20</title></circle>
+<circle class="point point-filled" cx="658.86" cy="283.60" r="4.8"><title>chr17:43090488-43091487
+COUNT=792
+SAMPLE_NORM=792.13091
+BG_MEDIAN_NORM=890
+SIGNAL=-0.16806446
+BACKGROUND_N=20</title></circle>
+<circle class="point point-filled" cx="670.30" cy="246.67" r="4.8"><title>chr17:43091435-43092434
+COUNT=1378
+SAMPLE_NORM=1378.2278
+BG_MEDIAN_NORM=1325
+SIGNAL=0.056821551
+BACKGROUND_N=20</title></circle>
+<circle class="point point-filled" cx="682.38" cy="224.89" r="4.8"><title>chr17:43092435-43093434
+COUNT=1619
+SAMPLE_NORM=1619.2676
+BG_MEDIAN_NORM=1420
+SIGNAL=0.18944925
+BACKGROUND_N=20</title></circle>
+<circle class="point point-filled" cx="694.45" cy="233.38" r="4.8"><title>chr17:43093435-43094434
+COUNT=1639
+SAMPLE_NORM=1639.2709
+BG_MEDIAN_NORM=1490
+SIGNAL=0.13774109
+BACKGROUND_N=20</title></circle>
+<circle class="point point-filled" cx="706.53" cy="258.37" r="4.8"><title>chr17:43094435-43095434
+COUNT=1371
+SAMPLE_NORM=1371.2266
+BG_MEDIAN_NORM=1385
+SIGNAL=-0.014418857
+BACKGROUND_N=20</title></circle>
+<circle class="point point-filled" cx="717.99" cy="273.11" r="4.8"><title>chr17:43095384-43096383
+COUNT=986
+SAMPLE_NORM=986.16298
+BG_MEDIAN_NORM=1060
+SIGNAL=-0.10416525
+BACKGROUND_N=20</title></circle>
+<circle class="point point-filled" cx="734.69" cy="242.23" r="4.8"><title>chr17:43096767-43097766
+COUNT=1208
+SAMPLE_NORM=1208.1997
+BG_MEDIAN_NORM=1140
+SIGNAL=0.083824359
+BACKGROUND_N=20</title></circle>
+<circle class="point point-filled" cx="765.62" cy="263.07" r="4.8"><title>chr17:43099328-43100327
+COUNT=985
+SAMPLE_NORM=985.16281
+BG_MEDIAN_NORM=1015
+SIGNAL=-0.043045224
+BACKGROUND_N=20</title></circle>
+<circle class="point point-filled" cx="818.32" cy="229.14" r="4.8"><title>chr17:43103692-43104691
+COUNT=1355
+SAMPLE_NORM=1355.224
+BG_MEDIAN_NORM=1210
+SIGNAL=0.16352297
+BACKGROUND_N=20</title></circle>
+<circle class="point point-filled" cx="830.39" cy="249.01" r="4.8"><title>chr17:43104692-43105691
+COUNT=968
+SAMPLE_NORM=968.16
+BG_MEDIAN_NORM=940
+SIGNAL=0.042584288
+BACKGROUND_N=20</title></circle>
+<circle class="point point-filled" cx="846.12" cy="275.72" r="4.8"><title>chr17:43105994-43106993
+COUNT=897
+SAMPLE_NORM=897.14827
+BG_MEDIAN_NORM=975
+SIGNAL=-0.12005451
+BACKGROUND_N=20</title></circle>
+<circle class="point point-filled" cx="957.93" cy="286.19" r="4.8"><title>chr17:43115253-43116252
+COUNT=757
+SAMPLE_NORM=757.12512
+BG_MEDIAN_NORM=860
+SIGNAL=-0.18380264
+BACKGROUND_N=20</title></circle>
+<circle class="point point-filled" cx="1058.32" cy="265.70" r="4.8"><title>chr17:43123566-43124565
+COUNT=691
+SAMPLE_NORM=691.11422
+BG_MEDIAN_NORM=720
+SIGNAL=-0.059071915
+BACKGROUND_N=20</title></circle>
+<circle class="point point-filled" cx="1073.44" cy="235.66" r="4.8"><title>chr17:43124818-43125817
+COUNT=828
+SAMPLE_NORM=828.13686
+BG_MEDIAN_NORM=760
+SIGNAL=0.12386823
+BACKGROUND_N=20</title></circle>
+<rect class="highlight-band" x="416.62" y="498.00" width="68.66" height="48.00"/>
+<line x1="113.20" y1="525" x2="135.43" y2="525" stroke="#5b6472" stroke-width="2"/>
+<line x1="136.16" y1="525" x2="153.28" y2="525" stroke="#5b6472" stroke-width="2"/>
+<line x1="154.16" y1="525" x2="176.73" y2="525" stroke="#5b6472" stroke-width="2"/>
+<line x1="177.38" y1="525" x2="249.06" y2="525" stroke="#5b6472" stroke-width="2"/>
+<polygon points="219.22,521.00 207.22,525.00 219.22,529.00" fill="#5b6472"/>
+<line x1="250.06" y1="525" x2="324.91" y2="525" stroke="#5b6472" stroke-width="2"/>
+<polygon points="293.48,521.00 281.48,525.00 293.48,529.00" fill="#5b6472"/>
+<line x1="325.39" y1="525" x2="331.44" y2="525" stroke="#5b6472" stroke-width="2"/>
+<line x1="332.37" y1="525" x2="376.53" y2="525" stroke="#5b6472" stroke-width="2"/>
+<polygon points="360.45,521.00 348.45,525.00 360.45,529.00" fill="#5b6472"/>
+<line x1="377.58" y1="525" x2="416.62" y2="525" stroke="#5b6472" stroke-width="2"/>
+<polygon points="403.10,521.00 391.10,525.00 403.10,529.00" fill="#5b6472"/>
+<line x1="420.37" y1="525" x2="457.72" y2="525" stroke="#5b6472" stroke-width="2"/>
+<polygon points="445.04,521.00 433.04,525.00 445.04,529.00" fill="#5b6472"/>
+<line x1="460.01" y1="525" x2="483.77" y2="525" stroke="#5b6472" stroke-width="2"/>
+<line x1="485.29" y1="525" x2="555.21" y2="525" stroke="#5b6472" stroke-width="2"/>
+<polygon points="526.25,521.00 514.25,525.00 526.25,529.00" fill="#5b6472"/>
+<line x1="557.27" y1="525" x2="658.34" y2="525" stroke="#5b6472" stroke-width="2"/>
+<polygon points="613.81,521.00 601.81,525.00 613.81,529.00" fill="#5b6472"/>
+<line x1="659.40" y1="525" x2="664.27" y2="525" stroke="#5b6472" stroke-width="2"/>
+<line x1="705.63" y1="525" x2="717.54" y2="525" stroke="#5b6472" stroke-width="2"/>
+<line x1="718.45" y1="525" x2="734.42" y2="525" stroke="#5b6472" stroke-width="2"/>
+<line x1="734.96" y1="525" x2="764.98" y2="525" stroke="#5b6472" stroke-width="2"/>
+<line x1="766.25" y1="525" x2="817.48" y2="525" stroke="#5b6472" stroke-width="2"/>
+<polygon points="797.87,521.00 785.87,525.00 797.87,529.00" fill="#5b6472"/>
+<line x1="819.16" y1="525" x2="826.49" y2="525" stroke="#5b6472" stroke-width="2"/>
+<line x1="827.55" y1="525" x2="845.66" y2="525" stroke="#5b6472" stroke-width="2"/>
+<line x1="846.59" y1="525" x2="957.61" y2="525" stroke="#5b6472" stroke-width="2"/>
+<polygon points="908.10,521.00 896.10,525.00 908.10,529.00" fill="#5b6472"/>
+<line x1="958.25" y1="525" x2="1057.73" y2="525" stroke="#5b6472" stroke-width="2"/>
+<polygon points="1013.99,521.00 1001.99,525.00 1013.99,529.00" fill="#5b6472"/>
+<line x1="1058.92" y1="525" x2="1072.88" y2="525" stroke="#5b6472" stroke-width="2"/>
+<rect class="exon-covered" x="1072.88" y="516.00" width="1.12" height="18.00" rx="3" ry="3"/>
+<rect class="exon-covered" x="1057.73" y="516.00" width="1.18" height="18.00" rx="3" ry="3"/>
+<rect class="exon-covered" x="957.61" y="516.00" width="1.00" height="18.00" rx="3" ry="3"/>
+<rect class="exon-covered" x="845.66" y="516.00" width="1.00" height="18.00" rx="3" ry="3"/>
+<rect class="exon-covered" x="826.49" y="516.00" width="1.06" height="18.00" rx="3" ry="3"/>
+<rect class="exon-covered" x="817.48" y="516.00" width="1.68" height="18.00" rx="3" ry="3"/>
+<rect class="exon-covered" x="764.98" y="516.00" width="1.27" height="18.00" rx="3" ry="3"/>
+<rect class="exon-covered" x="734.42" y="516.00" width="1.00" height="18.00" rx="3" ry="3"/>
+<rect class="exon-covered" x="717.54" y="516.00" width="1.00" height="18.00" rx="3" ry="3"/>
+<rect class="exon-covered" x="664.27" y="516.00" width="41.36" height="18.00" rx="3" ry="3"/>
+<rect class="exon-covered" x="658.34" y="516.00" width="1.06" height="18.00" rx="3" ry="3"/>
+<rect class="exon-uncovered" x="555.21" y="516.00" width="2.07" height="18.00" rx="3" ry="3"/>
+<polygon class="exon-uncovered-marker" points="549.74,544.50 562.74,544.50 556.24,538.00"/>
+<rect class="exon-covered" x="483.77" y="516.00" width="1.52" height="18.00" rx="3" ry="3"/>
+<rect class="exon-covered" x="457.72" y="516.00" width="2.29" height="18.00" rx="3" ry="3"/>
+<rect class="exon-covered" x="416.62" y="516.00" width="3.74" height="18.00" rx="3" ry="3"/>
+<rect class="exon-covered" x="376.53" y="516.00" width="1.05" height="18.00" rx="3" ry="3"/>
+<rect class="exon-covered" x="331.44" y="516.00" width="1.00" height="18.00" rx="3" ry="3"/>
+<rect class="exon-covered" x="324.91" y="516.00" width="1.00" height="18.00" rx="3" ry="3"/>
+<rect class="exon-covered" x="249.06" y="516.00" width="1.00" height="18.00" rx="3" ry="3"/>
+<rect class="exon-covered" x="176.73" y="516.00" width="1.00" height="18.00" rx="3" ry="3"/>
+<rect class="exon-covered" x="153.28" y="516.00" width="1.00" height="18.00" rx="3" ry="3"/>
+<rect class="exon-covered" x="135.43" y="516.00" width="1.00" height="18.00" rx="3" ry="3"/>
+<rect class="exon-covered" x="95.00" y="516.00" width="18.20" height="18.00" rx="3" ry="3"/>
+<text x="104.10" y="512.00" text-anchor="middle" font-size="11" font-weight="700">23</text>
+<text x="135.93" y="512.00" text-anchor="middle" font-size="11" font-weight="700">22</text>
+<text x="177.23" y="512.00" text-anchor="middle" font-size="11" font-weight="700">20</text>
+<text x="249.56" y="512.00" text-anchor="middle" font-size="11" font-weight="700">19</text>
+<text x="325.41" y="512.00" text-anchor="middle" font-size="11" font-weight="700">18</text>
+<text x="377.06" y="512.00" text-anchor="middle" font-size="11" font-weight="700">16</text>
+<text x="418.50" y="512.00" text-anchor="middle" font-size="11" font-weight="700">15</text>
+<text x="458.87" y="512.00" text-anchor="middle" font-size="11" font-weight="700">14</text>
+<text x="484.53" y="512.00" text-anchor="middle" font-size="11" font-weight="700">13</text>
+<text x="556.24" y="512.00" text-anchor="middle" font-size="11" font-weight="700">12</text>
+<text x="658.87" y="512.00" text-anchor="middle" font-size="11" font-weight="700">11</text>
+<text x="684.95" y="512.00" text-anchor="middle" font-size="11" font-weight="700">10</text>
+<text x="718.04" y="512.00" text-anchor="middle" font-size="11" font-weight="700">9</text>
+<text x="765.62" y="512.00" text-anchor="middle" font-size="11" font-weight="700">7</text>
+<text x="818.32" y="512.00" text-anchor="middle" font-size="11" font-weight="700">6</text>
+<text x="846.16" y="512.00" text-anchor="middle" font-size="11" font-weight="700">4</text>
+<text x="958.11" y="512.00" text-anchor="middle" font-size="11" font-weight="700">3</text>
+<text x="1073.44" y="512.00" text-anchor="middle" font-size="11" font-weight="700">1</text>
+<text x="24" y="256.0" text-anchor="middle" font-size="14" transform="rotate(-90 24 256.0)">log2(sample/background)</text>
+<text class="panel-label-emphasis" x="1112" y="113">Sample</text>
+<text class="panel-text-emphasis" x="1184" y="113">Synthetic BRCA1 exon 13-15 deletion</text>
+<line class="panel-separator" x1="1112" y1="127.00" x2="1436" y2="127.00"/>
+<text class="panel-label" x="1112" y="147">Gene</text>
+<text class="panel-text" x="1184" y="147">BRCA1</text>
+<text class="panel-label" x="1112" y="167">Transcript</text>
+<text class="panel-text" x="1184" y="167">NM_007294.4</text>
+<text class="panel-label" x="1112" y="187">Region</text>
+<text class="panel-text" x="1184" y="187">chr17:43,044,295-43,125,364</text>
+<line class="panel-separator" x1="1112" y1="201.00" x2="1436" y2="201.00"/>
+<text class="panel-label" x="1112" y="221">Highlight</text>
+<text class="panel-text" x="1184" y="221">chr17:43,070,928-43,076,614</text>
+<text class="panel-label" x="1112" y="241">Exons</text>
+<text class="panel-text" x="1184" y="241">13-15</text>
+<circle class="point point-filled" cx="1120" cy="279" r="5"/>
+<text class="panel-text" x="1136" y="283">Overlaps exon</text>
+<circle class="point point-open" cx="1120" cy="303" r="5"/>
+<text class="panel-text" x="1136" y="307">Outside exon</text>
+<polygon class="exon-uncovered-marker" points="1120.00,324.50 1126.50,331.00 1113.50,331.00"/>
+<text class="panel-text" x="1136" y="331">Uncovered exon</text>
+</svg>
