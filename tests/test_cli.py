@@ -38,11 +38,40 @@ def svg_polygon_x_values(svg: str) -> list[float]:
 def svg_exon_x_ranges(svg: str) -> list[tuple[float, float]]:
     """Return x ranges for transcript exon rectangles."""
     ranges: list[tuple[float, float]] = []
-    pattern = r'<rect x="([0-9.]+)" y="[^"]+" width="([0-9.]+)" height="18.00"[^>]+fill="#1f2933"'
+    pattern = r'<rect(?: class="[^"]*")? x="([0-9.]+)" y="[^"]+" width="([0-9.]+)" height="18.00"'
     for x_text, width_text in re.findall(pattern, svg):
         start = float(x_text)
         ranges.append((start, start + float(width_text)))
     return ranges
+
+
+def svg_uncovered_exon_x_ranges(svg: str) -> list[tuple[float, float]]:
+    """Return x ranges for uncovered exon rectangles."""
+    ranges: list[tuple[float, float]] = []
+    pattern = r'<rect class="exon-uncovered" x="([0-9.]+)" y="[^"]+" width="([0-9.]+)" height="18.00"'
+    for x_text, width_text in re.findall(pattern, svg):
+        start = float(x_text)
+        ranges.append((start, start + float(width_text)))
+    return ranges
+
+
+def svg_uncovered_exon_marker_x_values(svg: str) -> list[float]:
+    """Return x positions for uncovered-exon marker triangles."""
+    xs: list[float] = []
+    pattern = r'<polygon class="exon-uncovered-marker" points="([^"]+)"'
+    height_match = re.search(r'<svg xmlns="http://www.w3.org/2000/svg" width="[0-9.]+" height="([0-9.]+)"', svg)
+    height = float(height_match.group(1)) if height_match is not None else 620.0
+    transcript_marker_min_y = height * 0.65
+    for points in re.findall(pattern, svg):
+        marker_xs = []
+        marker_ys = []
+        for point in points.split():
+            x_text, _y_text = point.split(",", 1)
+            marker_xs.append(float(x_text))
+            marker_ys.append(float(_y_text))
+        if marker_xs and min(marker_ys) > transcript_marker_min_y:
+            xs.append(sum(marker_xs) / len(marker_xs))
+    return xs
 
 
 def svg_exon_label_positions(svg: str) -> list[tuple[int, float, float]]:
@@ -74,6 +103,16 @@ def svg_highlight_bands(svg: str) -> list[tuple[float, float, float, float]]:
     for x_text, y_text, width_text, height_text in re.findall(pattern, svg):
         bands.append((float(x_text), float(y_text), float(width_text), float(height_text)))
     return bands
+
+
+def svg_point_class_by_interval(svg: str) -> dict[str, str]:
+    """Return point classes keyed by interval title."""
+    classes: dict[str, str] = {}
+    pattern = r'<circle class="([^"]*point[^"]*)"[^>]*><title>([\s\S]*?)</title></circle>'
+    for point_class, title_text in re.findall(pattern, svg):
+        interval = title_text.split("\n", 1)[0]
+        classes[interval] = point_class
+    return classes
 
 
 def test_main_version(capsys: pytest.CaptureFixture[str]) -> None:
@@ -251,7 +290,6 @@ def test_plot_log2_ratio_writes_svg_with_zero_centered_axis(
     assert 'class="panel"' in svg
     assert "Plot Info" in svg
     assert "Region" in svg
-    assert ">background</text>" in svg
     assert "background band" not in svg
     highlight_bands = svg_highlight_bands(svg)
     assert len(highlight_bands) == 1
@@ -341,8 +379,9 @@ def test_plot_transcript_writes_exon_track_and_gene_name(
     assert "Exons" in svg
     assert "Highlight" in svg
     assert "log2(sample/background)" in svg
+    assert "Overlaps exon" in svg
+    assert "Outside exon" in svg
     assert ">2</text>" in svg
-    assert ">background</text>" in svg
     assert svg.count('class="panel-separator"') == 2
     assert svg.index("Sample") < svg.index("Gene") < svg.index("Transcript") < svg.index("Region") < svg.index("Highlight") < svg.index("Exons")
     highlight_bands = svg_highlight_bands(svg)
@@ -354,6 +393,140 @@ def test_plot_transcript_writes_exon_track_and_gene_name(
 
     assert capsys.readouterr().out == (
         "Plotted intervals: 2\n"
+        f"Wrote: {output_path}\n"
+    )
+
+
+def test_plot_transcript_constrains_long_sample_name(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    background_path = tmp_path / "background.tsv"
+    background_path.write_text(
+        "\n".join(
+            [
+                "# normalization=median-of-ratios",
+                "# baseline=median-positive-count",
+                "# samples=2",
+                "# lower_percentile=5",
+                "# upper_percentile=95",
+                "CONTIG\tSTART\tEND\tBASELINE_MEDIAN\tN\tBG_NORM_MEAN\tBG_NORM_MEDIAN\tBG_NORM_SD\tBG_NORM_P5\tBG_NORM_P95",
+                "chr1\t100\t199\t12.5\t2\t12.5\t12.5\t0\t12.5\t12.5",
+                "chr1\t200\t299\t25\t2\t25\t25\t0\t25\t25",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    sample_path = tmp_path / "sample.tsv"
+    write_read_counts(
+        sample_path,
+        [
+            ("chr1", 100, 199, 10),
+            ("chr1", 200, 299, 40),
+        ],
+    )
+    output_path = tmp_path / "plot.svg"
+    long_sample_name = "Sample with a deliberately very long descriptive name"
+
+    assert (
+        cli.main(
+            [
+                "plot",
+                "--read-counts",
+                str(sample_path),
+                "--background",
+                str(background_path),
+                "--sample-name",
+                long_sample_name,
+                "--output",
+                str(output_path),
+                "--region",
+                "chr1:100-299",
+            ]
+        )
+        == 0
+    )
+
+    svg = output_path.read_text(encoding="utf-8")
+    assert long_sample_name in svg
+    width_match = re.search(r'<svg xmlns="http://www.w3.org/2000/svg" width="([0-9.]+)" height="620"', svg)
+    assert width_match is not None
+    assert float(width_match.group(1)) > 1400
+
+    assert capsys.readouterr().out == (
+        "Plotted intervals: 2\n"
+        f"Wrote: {output_path}\n"
+    )
+
+
+def test_plot_transcript_uses_open_points_for_non_exonic_intervals(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    background_path = tmp_path / "background.tsv"
+    background_path.write_text(
+        "\n".join(
+            [
+                "# normalization=median-of-ratios",
+                "# baseline=median-positive-count",
+                "# samples=2",
+                "# lower_percentile=5",
+                "# upper_percentile=95",
+                "CONTIG\tSTART\tEND\tBASELINE_MEDIAN\tN\tBG_NORM_MEAN\tBG_NORM_MEDIAN\tBG_NORM_SD\tBG_NORM_P5\tBG_NORM_P95",
+                "chr1\t100\t120\t10\t2\t10\t10\t0\t10\t10",
+                "chr1\t121\t179\t20\t2\t20\t20\t0\t20\t20",
+                "chr1\t180\t220\t30\t2\t30\t30\t0\t30\t30",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    sample_path = tmp_path / "sample.tsv"
+    write_read_counts(
+        sample_path,
+        [
+            ("chr1", 100, 120, 12),
+            ("chr1", 121, 179, 18),
+            ("chr1", 180, 220, 33),
+        ],
+    )
+    gtf_path = tmp_path / "transcript.gtf.gz"
+    write_gtf_gz(
+        gtf_path,
+        [
+            'chr1\tsource\ttranscript\t100\t220\t.\t+\t.\tgene_id "GENE1"; gene_name "MYGENE"; transcript_id "TX1";',
+            'chr1\tsource\texon\t100\t120\t.\t+\t.\tgene_id "GENE1"; gene_name "MYGENE"; transcript_id "TX1"; exon_number "1";',
+            'chr1\tsource\texon\t180\t220\t.\t+\t.\tgene_id "GENE1"; gene_name "MYGENE"; transcript_id "TX1"; exon_number "2";',
+        ],
+    )
+    output_path = tmp_path / "plot.svg"
+
+    assert (
+        cli.main(
+            [
+                "plot",
+                "--read-counts",
+                str(sample_path),
+                "--background",
+                str(background_path),
+                "--transcript",
+                "TX1",
+                "--gtf",
+                str(gtf_path),
+                "--output",
+                str(output_path),
+            ]
+        )
+        == 0
+    )
+
+    svg = output_path.read_text(encoding="utf-8")
+    point_classes = svg_point_class_by_interval(svg)
+    assert point_classes["chr1:100-120"] == "point point-filled"
+    assert point_classes["chr1:121-179"] == "point point-open"
+    assert point_classes["chr1:180-220"] == "point point-filled"
+
+    assert capsys.readouterr().out == (
+        "Plotted intervals: 3\n"
         f"Wrote: {output_path}\n"
     )
 
@@ -488,10 +661,18 @@ def test_plot_transcript_keeps_full_transcript_width_when_exons_are_uncovered(
 
     svg = output_path.read_text(encoding="utf-8")
     exon_x_ranges = svg_exon_x_ranges(svg)
+    uncovered_exon_x_ranges = svg_uncovered_exon_x_ranges(svg)
+    uncovered_marker_x_values = svg_uncovered_exon_marker_x_values(svg)
     assert len(exon_x_ranges) == 2
     assert exon_x_ranges[0][0] >= 95.0
     assert exon_x_ranges[1][1] <= 1355.0
     assert exon_x_ranges[1][0] > exon_x_ranges[0][1]
+    assert len(uncovered_exon_x_ranges) == 1
+    uncovered_mid = uncovered_exon_x_ranges[0][0] + (uncovered_exon_x_ranges[0][1] - uncovered_exon_x_ranges[0][0]) / 2
+    assert abs(uncovered_mid - ((exon_x_ranges[1][0] + exon_x_ranges[1][1]) / 2)) < 0.1
+    assert len(uncovered_marker_x_values) == 1
+    assert abs(uncovered_marker_x_values[0] - uncovered_mid) < 0.1
+    assert "Uncovered exon" in svg
 
     assert capsys.readouterr().out == (
         "Plotted intervals: 1\n"

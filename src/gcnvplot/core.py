@@ -373,7 +373,10 @@ def build_background(args: argparse.Namespace) -> int:
 
 
 def rows_for_plot(
-    args: argparse.Namespace, region: Interval, background_summary: BackgroundSummary
+    args: argparse.Namespace,
+    region: Interval,
+    background_summary: BackgroundSummary,
+    transcript: TranscriptAnnotation | None = None,
 ) -> list[dict[str, object]]:
     """Join one sample with the background for plotting."""
     counts = parse_read_counts(args.read_counts)
@@ -413,6 +416,9 @@ def rows_for_plot(
             "bg_upper_norm": bg_upper,
             "background_n": int(bg["N"]),
         }
+        row["overlaps_exon"] = transcript is None or any(
+            overlaps(interval[1], interval[2], exon.start, exon.end) for exon in transcript.exons
+        )
         row["signal"] = log2_ratio(sample_value, bg_median, 0.01)
         row["signal_lower"] = log2_ratio(bg_lower, bg_median, 0.01)
         row["signal_upper"] = log2_ratio(bg_upper, bg_median, 0.01)
@@ -451,14 +457,18 @@ def write_svg_plot(
     transcript: TranscriptAnnotation | None = None,
 ) -> None:
     """Write a simple SVG plot for the sample and background."""
-    width = 1400
+    base_width = 1400
     height = 620
     left = 95
     top = 72
     bottom = 110 if transcript is None else 180
     panel_width = 304
     panel_gap = 22
-    plot_right = width - panel_width - panel_gap
+    if sample_name is not None:
+        estimated_sample_width = math.ceil(len(sample_name) * 7.2)
+        panel_width = max(panel_width, 88 + estimated_sample_width + 16)
+    plot_right = base_width - 304 - panel_gap
+    width = max(base_width, plot_right + panel_gap + panel_width)
     plot_width = plot_right - left
     plot_height = height - top - bottom
     region_start = region[1]
@@ -505,13 +515,20 @@ def write_svg_plot(
         ".grid { stroke: #d8dee4; stroke-width: 1; }",
         ".ribbon { fill: #c8d2df; opacity: 0.85; }",
         ".sample { fill: none; stroke: #127c78; stroke-width: 2.2; }",
-        ".point { fill: #127c78; stroke: white; stroke-width: 1.2; }",
+        ".point { stroke-width: 1.6; }",
+        ".point-filled { fill: #127c78; stroke: white; }",
+        ".point-open { fill: white; stroke: #127c78; }",
+        ".exon-covered { fill: #1f2933; }",
+        ".exon-uncovered { fill: #1f2933; }",
+        ".exon-uncovered-marker { fill: #b91c1c; }",
         ".baseline { stroke: #5b6472; stroke-width: 2; stroke-dasharray: 6 5; }",
         ".highlight-band { fill: #f59e0b; opacity: 0.28; stroke: #b45309; stroke-width: 1.1; }",
         ".panel { fill: #ffffff; stroke: #d8dee4; stroke-width: 1.2; }",
         ".panel-title { font-size: 14px; font-weight: 700; }",
         ".panel-label { font-size: 12px; font-weight: 700; }",
         ".panel-text { font-size: 12px; }",
+        ".panel-label-emphasis { font-size: 13px; font-weight: 800; }",
+        ".panel-text-emphasis { font-size: 13px; font-weight: 700; }",
         ".panel-separator { stroke: #d8dee4; stroke-width: 1.2; }",
         "</style>",
         f'<rect width="{width}" height="{height}" fill="white"/>',
@@ -564,8 +581,9 @@ def write_svg_plot(
             f"SIGNAL={fmt(float(row['signal']))}\n"
             f"BACKGROUND_N={row['background_n']}"
         )
+        point_class = "point point-filled" if bool(row["overlaps_exon"]) else "point point-open"
         elements.append(
-            f'<circle class="point" cx="{x:.2f}" cy="{y:.2f}" r="4.8">'
+            f'<circle class="{point_class}" cx="{x:.2f}" cy="{y:.2f}" r="4.8">'
             f"<title>{html.escape(title_text)}</title></circle>"
         )
 
@@ -573,10 +591,17 @@ def write_svg_plot(
         track_y = height - 95
         exon_height = 18
         exon_top = track_y - exon_height / 2
+        uncovered_marker_top = exon_top + exon_height + 4.0
         arrow_forward = transcript.strand == "+"
         arrow_exon_gap = 12.0
         arrow_size_x = 6.0
         arrow_size_y = 4.0
+        uncovered_marker_size = 6.5
+        covered_exon_numbers = {
+            exon.number
+            for exon in transcript.exons
+            if any(overlaps(exon.start, exon.end, int(row["start"]), int(row["end"])) for row in rows)
+        }
 
         def add_arrow(x_pos: float) -> None:
             if arrow_forward:
@@ -600,6 +625,15 @@ def write_svg_plot(
             if right.start > left.end
         ]
 
+        if highlight_start is not None and highlight_end is not None:
+            track_highlight_y = exon_top - 18
+            track_highlight_h = exon_height + 30
+            band_x = min(highlight_start, highlight_end)
+            band_width = abs(highlight_end - highlight_start)
+            elements.append(
+                f'<rect class="highlight-band" x="{band_x:.2f}" y="{track_highlight_y:.2f}" width="{band_width:.2f}" height="{track_highlight_h:.2f}"/>'
+            )
+
         for span_start, span_end in spans:
             x_start = x_for(float(span_start))
             x_end = x_for(float(span_end))
@@ -618,25 +652,25 @@ def write_svg_plot(
                 fraction = (index + 1) / (arrow_count + 1)
                 add_arrow(arrow_start + fraction * (arrow_end - arrow_start))
 
-        if highlight_start is not None and highlight_end is not None:
-            track_highlight_y = exon_top - 18
-            track_highlight_h = exon_height + 30
-            band_x = min(highlight_start, highlight_end)
-            band_width = abs(highlight_end - highlight_start)
-            elements.append(
-                f'<rect class="highlight-band" x="{band_x:.2f}" y="{track_highlight_y:.2f}" width="{band_width:.2f}" height="{track_highlight_h:.2f}"/>'
-            )
-
         for exon in transcript.exons:
             exon_start = x_for(exon.start)
             exon_end = x_for(exon.end)
             exon_x = min(exon_start, exon_end)
             exon_width = max(1.0, abs(exon_end - exon_start))
+            exon_mid = exon_x + exon_width / 2
+            exon_class = "exon-covered" if exon.number in covered_exon_numbers else "exon-uncovered"
             elements.extend(
                 [
-                    f'<rect x="{exon_x:.2f}" y="{exon_top:.2f}" width="{exon_width:.2f}" height="{exon_height:.2f}" rx="3" ry="3" fill="#1f2933"/>',
+                    f'<rect class="{exon_class}" x="{exon_x:.2f}" y="{exon_top:.2f}" width="{exon_width:.2f}" height="{exon_height:.2f}" rx="3" ry="3"/>',
                 ]
             )
+            if exon.number not in covered_exon_numbers:
+                marker_points = (
+                    f"{exon_mid - uncovered_marker_size:.2f},{uncovered_marker_top + uncovered_marker_size:.2f} "
+                    f"{exon_mid + uncovered_marker_size:.2f},{uncovered_marker_top + uncovered_marker_size:.2f} "
+                    f"{exon_mid:.2f},{uncovered_marker_top:.2f}"
+                )
+                elements.append(f'<polygon class="exon-uncovered-marker" points="{marker_points}"/>')
 
         label_base_y = exon_top - 4.0
         label_padding = 4.0
@@ -755,8 +789,12 @@ def write_svg_plot(
     info_y = panel_y + 49
     for section_index, section in enumerate(info_sections):
         for label, value in section:
-            elements.append(f'<text class="panel-label" x="{panel_x + 16}" y="{info_y}">{html.escape(label)}</text>')
-            elements.append(f'<text class="panel-text" x="{panel_x + 88}" y="{info_y}">{html.escape(value)}</text>')
+            label_class = "panel-label-emphasis" if label == "Sample" else "panel-label"
+            value_class = "panel-text-emphasis" if label == "Sample" else "panel-text"
+            elements.append(
+                f'<text class="{label_class}" x="{panel_x + 16}" y="{info_y}">{html.escape(label)}</text>'
+            )
+            elements.append(f'<text class="{value_class}" x="{panel_x + 88}" y="{info_y}">{html.escape(value)}</text>')
             info_y += 20
         if section_index < len(info_sections) - 1:
             separator_y = info_y - 6
@@ -765,17 +803,17 @@ def write_svg_plot(
             )
             info_y += 14
 
-    legend_y = max(info_y + 18, panel_y + panel_h - 58)
-    panel_h = legend_y + 54 - panel_y
+    legend_y = max(info_y + 18, panel_y + panel_h - 72)
+    panel_h = legend_y + 68 - panel_y
     elements[3] = f'<rect class="panel" x="{panel_x}" y="{panel_y}" width="{panel_width}" height="{panel_h}"/>'
     elements.extend(
         [
-            f'<rect x="{panel_x + 16}" y="{legend_y - 13}" width="15" height="15" fill="#c8d2df" opacity="0.85"/>',
-            f'<text class="panel-text" x="{panel_x + 40}" y="{legend_y}">background</text>',
-            f'<line x1="{panel_x + 16}" y1="{legend_y + 23}" x2="{panel_x + 34}" y2="{legend_y + 23}" stroke="#5b6472" stroke-width="2" stroke-dasharray="6 5"/>',
-            f'<text class="panel-text" x="{panel_x + 40}" y="{legend_y + 27}">expected baseline</text>',
-            f'<circle class="point" cx="{panel_x + 24}" cy="{legend_y + 48}" r="5"/>',
-            f'<text class="panel-text" x="{panel_x + 40}" y="{legend_y + 52}">sample signal</text>',
+            f'<circle class="point point-filled" cx="{panel_x + 24}" cy="{legend_y}" r="5"/>',
+            f'<text class="panel-text" x="{panel_x + 40}" y="{legend_y + 4}">Overlaps exon</text>',
+            f'<circle class="point point-open" cx="{panel_x + 24}" cy="{legend_y + 24}" r="5"/>',
+            f'<text class="panel-text" x="{panel_x + 40}" y="{legend_y + 28}">Outside exon</text>',
+            f'<polygon class="exon-uncovered-marker" points="{panel_x + 24:.2f},{legend_y + 45.50:.2f} {panel_x + 30.5:.2f},{legend_y + 52.00:.2f} {panel_x + 17.5:.2f},{legend_y + 52.00:.2f}"/>',
+            f'<text class="panel-text" x="{panel_x + 40}" y="{legend_y + 52}">Uncovered exon</text>',
             "</svg>",
         ]
     )
@@ -793,7 +831,7 @@ def plot_sample(args: argparse.Namespace) -> int:
         region = (transcript.contig, transcript.start, transcript.end)
 
     background_summary = parse_background(args.background)
-    rows = rows_for_plot(args, region, background_summary)
+    rows = rows_for_plot(args, region, background_summary, transcript=transcript)
     if not rows:
         raise SystemExit("No intervals with background statistics overlap the selected region.")
 
