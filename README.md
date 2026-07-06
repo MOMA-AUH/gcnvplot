@@ -74,7 +74,7 @@ This example is designed to show:
 
 ## Details
 
-`gcnvplot` uses a median-of-ratios normalization. For `create-background`, let `c_ij` be the raw count for interval `i` in background sample `j`.
+The `gcnvplot` tool uses a median-of-ratios normalization. For `create-background`, let `c_ij` be the raw count for interval `i` in background sample `j`.
 
 1. Interval baseline:
 
@@ -116,4 +116,4 @@ For `plot`, let `c_i` be the raw count for the plotted sample at interval `i`.
 
    `upper_i = log2((p95_i + 0.01) / (m_i + 0.01))`
 
-This means the plotted curve shows relative dosage after library-size normalization, while the ribbon shows where the central background cohort typically lies for each interval.
+This means the plotted curve shows relative signal after size normalization, while the ribbon shows where the central background cohort typically lies for each interval.
