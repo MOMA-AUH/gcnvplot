@@ -38,11 +38,35 @@ def svg_polygon_x_values(svg: str) -> list[float]:
 def svg_exon_x_ranges(svg: str) -> list[tuple[float, float]]:
     """Return x ranges for transcript exon rectangles."""
     ranges: list[tuple[float, float]] = []
-    pattern = r'<rect x="([0-9.]+)" y="[^"]+" width="([0-9.]+)" height="18.00"[^>]+fill="#1f2933"'
+    pattern = r'<rect(?: class="[^"]*")? x="([0-9.]+)" y="[^"]+" width="([0-9.]+)" height="18.00"'
     for x_text, width_text in re.findall(pattern, svg):
         start = float(x_text)
         ranges.append((start, start + float(width_text)))
     return ranges
+
+
+def svg_uncovered_exon_x_ranges(svg: str) -> list[tuple[float, float]]:
+    """Return x ranges for uncovered exon rectangles."""
+    ranges: list[tuple[float, float]] = []
+    pattern = r'<rect class="exon-uncovered" x="([0-9.]+)" y="[^"]+" width="([0-9.]+)" height="18.00"'
+    for x_text, width_text in re.findall(pattern, svg):
+        start = float(x_text)
+        ranges.append((start, start + float(width_text)))
+    return ranges
+
+
+def svg_uncovered_exon_marker_x_values(svg: str) -> list[float]:
+    """Return x positions for uncovered-exon marker triangles."""
+    xs: list[float] = []
+    pattern = r'<polygon class="exon-uncovered-marker" points="([^"]+)"'
+    for points in re.findall(pattern, svg):
+        marker_xs = []
+        for point in points.split():
+            x_text, _y_text = point.split(",", 1)
+            marker_xs.append(float(x_text))
+        if marker_xs:
+            xs.append(sum(marker_xs) / len(marker_xs))
+    return xs
 
 
 def svg_exon_label_positions(svg: str) -> list[tuple[int, float, float]]:
@@ -571,10 +595,17 @@ def test_plot_transcript_keeps_full_transcript_width_when_exons_are_uncovered(
 
     svg = output_path.read_text(encoding="utf-8")
     exon_x_ranges = svg_exon_x_ranges(svg)
+    uncovered_exon_x_ranges = svg_uncovered_exon_x_ranges(svg)
+    uncovered_marker_x_values = svg_uncovered_exon_marker_x_values(svg)
     assert len(exon_x_ranges) == 2
     assert exon_x_ranges[0][0] >= 95.0
     assert exon_x_ranges[1][1] <= 1355.0
     assert exon_x_ranges[1][0] > exon_x_ranges[0][1]
+    assert len(uncovered_exon_x_ranges) == 1
+    uncovered_mid = uncovered_exon_x_ranges[0][0] + (uncovered_exon_x_ranges[0][1] - uncovered_exon_x_ranges[0][0]) / 2
+    assert abs(uncovered_mid - ((exon_x_ranges[1][0] + exon_x_ranges[1][1]) / 2)) < 0.1
+    assert len(uncovered_marker_x_values) == 1
+    assert abs(uncovered_marker_x_values[0] - uncovered_mid) < 0.1
 
     assert capsys.readouterr().out == (
         "Plotted intervals: 1\n"

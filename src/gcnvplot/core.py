@@ -514,6 +514,9 @@ def write_svg_plot(
         ".point { stroke-width: 1.6; }",
         ".point-filled { fill: #127c78; stroke: white; }",
         ".point-open { fill: white; stroke: #127c78; }",
+        ".exon-covered { fill: #1f2933; }",
+        ".exon-uncovered { fill: #9ec5d6; stroke: #2f6f88; stroke-width: 1.2; }",
+        ".exon-uncovered-marker { fill: #2f6f88; }",
         ".baseline { stroke: #5b6472; stroke-width: 2; stroke-dasharray: 6 5; }",
         ".highlight-band { fill: #f59e0b; opacity: 0.28; stroke: #b45309; stroke-width: 1.1; }",
         ".panel { fill: #ffffff; stroke: #d8dee4; stroke-width: 1.2; }",
@@ -582,10 +585,17 @@ def write_svg_plot(
         track_y = height - 95
         exon_height = 18
         exon_top = track_y - exon_height / 2
+        uncovered_marker_top = exon_top + exon_height + 4.0
         arrow_forward = transcript.strand == "+"
         arrow_exon_gap = 12.0
         arrow_size_x = 6.0
         arrow_size_y = 4.0
+        uncovered_marker_size = 5.0
+        covered_exon_numbers = {
+            exon.number
+            for exon in transcript.exons
+            if any(overlaps(exon.start, exon.end, int(row["start"]), int(row["end"])) for row in rows)
+        }
 
         def add_arrow(x_pos: float) -> None:
             if arrow_forward:
@@ -609,6 +619,15 @@ def write_svg_plot(
             if right.start > left.end
         ]
 
+        if highlight_start is not None and highlight_end is not None:
+            track_highlight_y = exon_top - 18
+            track_highlight_h = exon_height + 30
+            band_x = min(highlight_start, highlight_end)
+            band_width = abs(highlight_end - highlight_start)
+            elements.append(
+                f'<rect class="highlight-band" x="{band_x:.2f}" y="{track_highlight_y:.2f}" width="{band_width:.2f}" height="{track_highlight_h:.2f}"/>'
+            )
+
         for span_start, span_end in spans:
             x_start = x_for(float(span_start))
             x_end = x_for(float(span_end))
@@ -627,25 +646,25 @@ def write_svg_plot(
                 fraction = (index + 1) / (arrow_count + 1)
                 add_arrow(arrow_start + fraction * (arrow_end - arrow_start))
 
-        if highlight_start is not None and highlight_end is not None:
-            track_highlight_y = exon_top - 18
-            track_highlight_h = exon_height + 30
-            band_x = min(highlight_start, highlight_end)
-            band_width = abs(highlight_end - highlight_start)
-            elements.append(
-                f'<rect class="highlight-band" x="{band_x:.2f}" y="{track_highlight_y:.2f}" width="{band_width:.2f}" height="{track_highlight_h:.2f}"/>'
-            )
-
         for exon in transcript.exons:
             exon_start = x_for(exon.start)
             exon_end = x_for(exon.end)
             exon_x = min(exon_start, exon_end)
             exon_width = max(1.0, abs(exon_end - exon_start))
+            exon_mid = exon_x + exon_width / 2
+            exon_class = "exon-covered" if exon.number in covered_exon_numbers else "exon-uncovered"
             elements.extend(
                 [
-                    f'<rect x="{exon_x:.2f}" y="{exon_top:.2f}" width="{exon_width:.2f}" height="{exon_height:.2f}" rx="3" ry="3" fill="#1f2933"/>',
+                    f'<rect class="{exon_class}" x="{exon_x:.2f}" y="{exon_top:.2f}" width="{exon_width:.2f}" height="{exon_height:.2f}" rx="3" ry="3"/>',
                 ]
             )
+            if exon.number not in covered_exon_numbers:
+                marker_points = (
+                    f"{exon_mid - uncovered_marker_size:.2f},{uncovered_marker_top + uncovered_marker_size:.2f} "
+                    f"{exon_mid + uncovered_marker_size:.2f},{uncovered_marker_top + uncovered_marker_size:.2f} "
+                    f"{exon_mid:.2f},{uncovered_marker_top:.2f}"
+                )
+                elements.append(f'<polygon class="exon-uncovered-marker" points="{marker_points}"/>')
 
         label_base_y = exon_top - 4.0
         label_padding = 4.0
