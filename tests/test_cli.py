@@ -76,6 +76,16 @@ def svg_highlight_bands(svg: str) -> list[tuple[float, float, float, float]]:
     return bands
 
 
+def svg_point_class_by_interval(svg: str) -> dict[str, str]:
+    """Return point classes keyed by interval title."""
+    classes: dict[str, str] = {}
+    pattern = r'<circle class="([^"]*point[^"]*)"[^>]*><title>([^<]+)</title></circle>'
+    for point_class, title_text in re.findall(pattern, svg):
+        interval = title_text.split("&#10;", 1)[0]
+        classes[interval] = point_class
+    return classes
+
+
 def test_main_version(capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit) as exc_info:
         cli.main(["--version"])
@@ -341,8 +351,9 @@ def test_plot_transcript_writes_exon_track_and_gene_name(
     assert "Exons" in svg
     assert "Highlight" in svg
     assert "log2(sample/background)" in svg
+    assert "Overlaps exon" in svg
+    assert "Outside exon" in svg
     assert ">2</text>" in svg
-    assert ">background</text>" in svg
     assert svg.count('class="panel-separator"') == 2
     assert svg.index("Sample") < svg.index("Gene") < svg.index("Transcript") < svg.index("Region") < svg.index("Highlight") < svg.index("Exons")
     highlight_bands = svg_highlight_bands(svg)
@@ -354,6 +365,78 @@ def test_plot_transcript_writes_exon_track_and_gene_name(
 
     assert capsys.readouterr().out == (
         "Plotted intervals: 2\n"
+        f"Wrote: {output_path}\n"
+    )
+
+
+def test_plot_transcript_uses_open_points_for_non_exonic_intervals(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    background_path = tmp_path / "background.tsv"
+    background_path.write_text(
+        "\n".join(
+            [
+                "# normalization=median-of-ratios",
+                "# baseline=median-positive-count",
+                "# samples=2",
+                "# lower_percentile=5",
+                "# upper_percentile=95",
+                "CONTIG\tSTART\tEND\tBASELINE_MEDIAN\tN\tBG_NORM_MEAN\tBG_NORM_MEDIAN\tBG_NORM_SD\tBG_NORM_P5\tBG_NORM_P95",
+                "chr1\t100\t120\t10\t2\t10\t10\t0\t10\t10",
+                "chr1\t121\t179\t20\t2\t20\t20\t0\t20\t20",
+                "chr1\t180\t220\t30\t2\t30\t30\t0\t30\t30",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    sample_path = tmp_path / "sample.tsv"
+    write_read_counts(
+        sample_path,
+        [
+            ("chr1", 100, 120, 12),
+            ("chr1", 121, 179, 18),
+            ("chr1", 180, 220, 33),
+        ],
+    )
+    gtf_path = tmp_path / "transcript.gtf.gz"
+    write_gtf_gz(
+        gtf_path,
+        [
+            'chr1\tsource\ttranscript\t100\t220\t.\t+\t.\tgene_id "GENE1"; gene_name "MYGENE"; transcript_id "TX1";',
+            'chr1\tsource\texon\t100\t120\t.\t+\t.\tgene_id "GENE1"; gene_name "MYGENE"; transcript_id "TX1"; exon_number "1";',
+            'chr1\tsource\texon\t180\t220\t.\t+\t.\tgene_id "GENE1"; gene_name "MYGENE"; transcript_id "TX1"; exon_number "2";',
+        ],
+    )
+    output_path = tmp_path / "plot.svg"
+
+    assert (
+        cli.main(
+            [
+                "plot",
+                "--read-counts",
+                str(sample_path),
+                "--background",
+                str(background_path),
+                "--transcript",
+                "TX1",
+                "--gtf",
+                str(gtf_path),
+                "--output",
+                str(output_path),
+            ]
+        )
+        == 0
+    )
+
+    svg = output_path.read_text(encoding="utf-8")
+    point_classes = svg_point_class_by_interval(svg)
+    assert point_classes["chr1:100-120"] == "point point-filled"
+    assert point_classes["chr1:121-179"] == "point point-open"
+    assert point_classes["chr1:180-220"] == "point point-filled"
+
+    assert capsys.readouterr().out == (
+        "Plotted intervals: 3\n"
         f"Wrote: {output_path}\n"
     )
 

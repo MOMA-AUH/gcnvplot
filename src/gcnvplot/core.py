@@ -373,7 +373,10 @@ def build_background(args: argparse.Namespace) -> int:
 
 
 def rows_for_plot(
-    args: argparse.Namespace, region: Interval, background_summary: BackgroundSummary
+    args: argparse.Namespace,
+    region: Interval,
+    background_summary: BackgroundSummary,
+    transcript: TranscriptAnnotation | None = None,
 ) -> list[dict[str, object]]:
     """Join one sample with the background for plotting."""
     counts = parse_read_counts(args.read_counts)
@@ -413,6 +416,9 @@ def rows_for_plot(
             "bg_upper_norm": bg_upper,
             "background_n": int(bg["N"]),
         }
+        row["overlaps_exon"] = transcript is None or any(
+            overlaps(interval[1], interval[2], exon.start, exon.end) for exon in transcript.exons
+        )
         row["signal"] = log2_ratio(sample_value, bg_median, 0.01)
         row["signal_lower"] = log2_ratio(bg_lower, bg_median, 0.01)
         row["signal_upper"] = log2_ratio(bg_upper, bg_median, 0.01)
@@ -505,7 +511,9 @@ def write_svg_plot(
         ".grid { stroke: #d8dee4; stroke-width: 1; }",
         ".ribbon { fill: #c8d2df; opacity: 0.85; }",
         ".sample { fill: none; stroke: #127c78; stroke-width: 2.2; }",
-        ".point { fill: #127c78; stroke: white; stroke-width: 1.2; }",
+        ".point { stroke-width: 1.6; }",
+        ".point-filled { fill: #127c78; stroke: white; }",
+        ".point-open { fill: white; stroke: #127c78; }",
         ".baseline { stroke: #5b6472; stroke-width: 2; stroke-dasharray: 6 5; }",
         ".highlight-band { fill: #f59e0b; opacity: 0.28; stroke: #b45309; stroke-width: 1.1; }",
         ".panel { fill: #ffffff; stroke: #d8dee4; stroke-width: 1.2; }",
@@ -564,8 +572,9 @@ def write_svg_plot(
             f"SIGNAL={fmt(float(row['signal']))}\n"
             f"BACKGROUND_N={row['background_n']}"
         )
+        point_class = "point point-filled" if bool(row["overlaps_exon"]) else "point point-open"
         elements.append(
-            f'<circle class="point" cx="{x:.2f}" cy="{y:.2f}" r="4.8">'
+            f'<circle class="{point_class}" cx="{x:.2f}" cy="{y:.2f}" r="4.8">'
             f"<title>{html.escape(title_text)}</title></circle>"
         )
 
@@ -770,12 +779,10 @@ def write_svg_plot(
     elements[3] = f'<rect class="panel" x="{panel_x}" y="{panel_y}" width="{panel_width}" height="{panel_h}"/>'
     elements.extend(
         [
-            f'<rect x="{panel_x + 16}" y="{legend_y - 13}" width="15" height="15" fill="#c8d2df" opacity="0.85"/>',
-            f'<text class="panel-text" x="{panel_x + 40}" y="{legend_y}">background</text>',
-            f'<line x1="{panel_x + 16}" y1="{legend_y + 23}" x2="{panel_x + 34}" y2="{legend_y + 23}" stroke="#5b6472" stroke-width="2" stroke-dasharray="6 5"/>',
-            f'<text class="panel-text" x="{panel_x + 40}" y="{legend_y + 27}">expected baseline</text>',
-            f'<circle class="point" cx="{panel_x + 24}" cy="{legend_y + 48}" r="5"/>',
-            f'<text class="panel-text" x="{panel_x + 40}" y="{legend_y + 52}">sample signal</text>',
+            f'<circle class="point point-filled" cx="{panel_x + 24}" cy="{legend_y}" r="5"/>',
+            f'<text class="panel-text" x="{panel_x + 40}" y="{legend_y + 4}">Overlaps exon</text>',
+            f'<circle class="point point-open" cx="{panel_x + 24}" cy="{legend_y + 24}" r="5"/>',
+            f'<text class="panel-text" x="{panel_x + 40}" y="{legend_y + 28}">Outside exon</text>',
             "</svg>",
         ]
     )
@@ -793,7 +800,7 @@ def plot_sample(args: argparse.Namespace) -> int:
         region = (transcript.contig, transcript.start, transcript.end)
 
     background_summary = parse_background(args.background)
-    rows = rows_for_plot(args, region, background_summary)
+    rows = rows_for_plot(args, region, background_summary, transcript=transcript)
     if not rows:
         raise SystemExit("No intervals with background statistics overlap the selected region.")
 
