@@ -382,20 +382,27 @@ def _build_plot_svg(
             )
             info_y += 14
 
-    legend_y = max(info_y + 18, panel_y + panel_h - 72)
-    panel_h = legend_y + 68 - panel_y
+    legend_bottom_padding = 68 if transcript is not None else 24
+    legend_y = max(info_y + 18, panel_y + panel_h - legend_bottom_padding)
+    panel_h = max(panel_h, legend_y + legend_bottom_padding - panel_y)
     elements[3] = f'<rect class="panel" x="{panel_x}" y="{panel_y}" width="{panel_width}" height="{panel_h}"/>'
     elements.extend(
         [
             f'<circle class="point point-filled" cx="{panel_x + 24}" cy="{legend_y}" r="5"/>',
-            f'<text class="panel-text" x="{panel_x + 40}" y="{legend_y + 4}">Overlaps exon</text>',
-            f'<circle class="point point-open" cx="{panel_x + 24}" cy="{legend_y + 24}" r="5"/>',
-            f'<text class="panel-text" x="{panel_x + 40}" y="{legend_y + 28}">Outside exon</text>',
-            f'<polygon class="exon-uncovered-marker" points="{panel_x + 24:.2f},{legend_y + 45.50:.2f} {panel_x + 30.5:.2f},{legend_y + 52.00:.2f} {panel_x + 17.5:.2f},{legend_y + 52.00:.2f}"/>',
-            f'<text class="panel-text" x="{panel_x + 40}" y="{legend_y + 52}">Uncovered exon</text>',
-            "</svg>",
+            f'<text class="panel-text" x="{panel_x + 40}" y="{legend_y + 4}">'
+            f'{"Overlaps exon" if transcript is not None else "Sample interval"}</text>',
         ]
     )
+    if transcript is not None:
+        elements.extend(
+            [
+                f'<circle class="point point-open" cx="{panel_x + 24}" cy="{legend_y + 24}" r="5"/>',
+                f'<text class="panel-text" x="{panel_x + 40}" y="{legend_y + 28}">Outside exon</text>',
+                f'<polygon class="exon-uncovered-marker" points="{panel_x + 24:.2f},{legend_y + 45.50:.2f} {panel_x + 30.5:.2f},{legend_y + 52.00:.2f} {panel_x + 17.5:.2f},{legend_y + 52.00:.2f}"/>',
+                f'<text class="panel-text" x="{panel_x + 40}" y="{legend_y + 52}">Uncovered exon</text>',
+            ]
+        )
+    elements.append("</svg>")
 
     return "\n".join(elements) + "\n"
 

@@ -471,6 +471,10 @@ def test_plot_log2_ratio_writes_svg_with_zero_centered_axis(
     assert 'class="panel"' in svg
     assert "Plot Info" in svg
     assert "Region" in svg
+    assert "Sample interval" in svg
+    assert "Overlaps exon" not in svg
+    assert "Outside exon" not in svg
+    assert "Uncovered exon" not in svg
     assert "background band" not in svg
     highlight_bands = svg_highlight_bands(svg)
     assert len(highlight_bands) == 1
