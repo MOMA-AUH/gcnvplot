@@ -106,7 +106,10 @@ def main(argv: list[str] | None = None) -> int:
     if handler is None:
         parser.print_help()
         return 1
-    return handler(args)
+    try:
+        return handler(args)
+    except ValueError as error:
+        parser.error(str(error))
 
 
 if __name__ == "__main__":

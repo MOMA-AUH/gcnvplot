@@ -329,6 +329,84 @@ def test_plot_transcript_requires_transcript_db(
     assert "--transcript-db is required when --transcript is used" in capsys.readouterr().err
 
 
+def test_transcript_index_rejects_ambiguous_versionless_ids(
+    tmp_path: Path,
+) -> None:
+    gtf_path = tmp_path / "ambiguous.gtf.gz"
+    write_gtf_gz(
+        gtf_path,
+        [
+            'chr1\tsource\ttranscript\t100\t220\t.\t+\t.\tgene_id "GENE1"; gene_name "MYGENE"; transcript_id "TX1.1";',
+            'chr1\tsource\texon\t100\t120\t.\t+\t.\tgene_id "GENE1"; gene_name "MYGENE"; transcript_id "TX1.1"; exon_number "1";',
+            'chr1\tsource\ttranscript\t300\t420\t.\t+\t.\tgene_id "GENE1"; gene_name "MYGENE"; transcript_id "TX1.2";',
+            'chr1\tsource\texon\t300\t320\t.\t+\t.\tgene_id "GENE1"; gene_name "MYGENE"; transcript_id "TX1.2"; exon_number "1";',
+        ],
+    )
+    db_path = tmp_path / "transcripts.sqlite"
+    build_transcript_db(gtf_path, db_path)
+
+    with gcnvplot.TranscriptIndex(db_path) as transcript_index:
+        assert transcript_index.get("TX1.1").transcript_id == "TX1.1"
+        with pytest.raises(ValueError, match=r"ambiguous; matches: TX1\.1, TX1\.2"):
+            transcript_index.get("TX1")
+
+
+def test_plot_transcript_reports_ambiguous_versionless_id(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    background_path = tmp_path / "background.tsv"
+    background_path.write_text(
+        "\n".join(
+            [
+                "# normalization=median-of-ratios",
+                "# baseline=median-positive-count",
+                "# samples=2",
+                "# lower_percentile=5",
+                "# upper_percentile=95",
+                "CONTIG\tSTART\tEND\tBASELINE_MEDIAN\tN\tBG_NORM_MEAN\tBG_NORM_MEDIAN\tBG_NORM_SD\tBG_NORM_P5\tBG_NORM_P95",
+                "chr1\t100\t199\t12.5\t2\t12.5\t12.5\t0\t12.5\t12.5",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    sample_path = tmp_path / "sample.tsv"
+    write_read_counts(sample_path, [("chr1", 100, 199, 10)])
+    gtf_path = tmp_path / "ambiguous.gtf.gz"
+    write_gtf_gz(
+        gtf_path,
+        [
+            'chr1\tsource\ttranscript\t100\t220\t.\t+\t.\tgene_id "GENE1"; gene_name "MYGENE"; transcript_id "TX1.1";',
+            'chr1\tsource\texon\t100\t120\t.\t+\t.\tgene_id "GENE1"; gene_name "MYGENE"; transcript_id "TX1.1"; exon_number "1";',
+            'chr1\tsource\ttranscript\t300\t420\t.\t+\t.\tgene_id "GENE1"; gene_name "MYGENE"; transcript_id "TX1.2";',
+            'chr1\tsource\texon\t300\t320\t.\t+\t.\tgene_id "GENE1"; gene_name "MYGENE"; transcript_id "TX1.2"; exon_number "1";',
+        ],
+    )
+    db_path = tmp_path / "transcripts.sqlite"
+    build_transcript_db(gtf_path, db_path)
+    capsys.readouterr()
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main(
+            [
+                "plot",
+                "--read-counts",
+                str(sample_path),
+                "--background",
+                str(background_path),
+                "--transcript",
+                "TX1",
+                "--transcript-db",
+                str(db_path),
+                "--output",
+                str(tmp_path / "plot.svg"),
+            ]
+        )
+
+    assert exc_info.value.code == 2
+    assert "ambiguous; matches: TX1.1, TX1.2" in capsys.readouterr().err
+
+
 def test_plot_log2_ratio_writes_svg_with_zero_centered_axis(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
