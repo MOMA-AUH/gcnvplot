@@ -687,10 +687,7 @@ def nice_ticks(start: int, end: int, max_ticks: int = 8) -> list[int]:
 
 def _build_plot_svg(
     rows: list[dict[str, object]],
-    title: str,
-    signal: str,
     region: Interval,
-    background_summary: BackgroundSummary,
     sample_name: str | None = None,
     highlight: Interval | None = None,
     transcript: TranscriptAnnotation | None = None,
@@ -1065,10 +1062,7 @@ def _build_plot_svg(
 def write_svg_plot(
     rows: list[dict[str, object]],
     output: Path,
-    title: str,
-    signal: str,
     region: Interval,
-    background_summary: BackgroundSummary,
     sample_name: str | None = None,
     highlight: Interval | None = None,
     transcript: TranscriptAnnotation | None = None,
@@ -1076,10 +1070,7 @@ def write_svg_plot(
     """Write an SVG plot for the sample and background."""
     svg = _build_plot_svg(
         rows,
-        title,
-        signal,
         region,
-        background_summary,
         sample_name=sample_name,
         highlight=highlight,
         transcript=transcript,
@@ -1141,10 +1132,7 @@ def render_plot_svg(
 
     return _build_plot_svg(
         rows,
-        "Normalized GATK GermlineCNVCaller Read Counts",
-        "log2-ratio",
         region_value,
-        background_summary=background_summary,
         sample_name=sample_name,
         highlight=_coerce_highlight(highlight),
         transcript=transcript,
@@ -1192,10 +1180,7 @@ def plot_sample(args: argparse.Namespace) -> int:
     write_svg_plot(
         rows,
         args.output,
-        "Normalized GATK GermlineCNVCaller Read Counts",
-        "log2-ratio",
         region,
-        background_summary=background_summary,
         sample_name=args.sample_name,
         highlight=args.highlight,
         transcript=transcript,
