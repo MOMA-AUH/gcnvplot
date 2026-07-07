@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import gzip
 import re
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -23,6 +24,22 @@ def write_gtf_gz(path: Path, lines: list[str]) -> None:
     """Write a tiny gzipped GTF file."""
     with gzip.open(path, "wt", encoding="utf-8") as handle:
         handle.write("\n".join(lines) + "\n")
+
+
+def build_transcript_db(gtf_path: Path, db_path: Path) -> None:
+    """Build a transcript SQLite database from a GTF using the CLI."""
+    assert (
+        cli.main(
+            [
+                "index-gtf",
+                "--gtf",
+                str(gtf_path),
+                "--output",
+                str(db_path),
+            ]
+        )
+        == 0
+    )
 
 
 def svg_polygon_x_values(svg: str) -> list[float]:
@@ -192,6 +209,50 @@ def test_create_background_requires_output(
     assert "the following arguments are required: --output" in capsys.readouterr().err
 
 
+def test_index_gtf_writes_sqlite_database(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    gtf_path = tmp_path / "transcript.gtf.gz"
+    write_gtf_gz(
+        gtf_path,
+        [
+            'chr1\tsource\ttranscript\t100\t220\t.\t+\t.\tgene_id "GENE1"; gene_name "MYGENE"; transcript_id "TX1";',
+            'chr1\tsource\texon\t100\t120\t.\t+\t.\tgene_id "GENE1"; gene_name "MYGENE"; transcript_id "TX1"; exon_number "1";',
+            'chr1\tsource\texon\t180\t220\t.\t+\t.\tgene_id "GENE1"; gene_name "MYGENE"; transcript_id "TX1"; exon_number "2";',
+        ],
+    )
+    output_path = tmp_path / "transcripts.sqlite"
+
+    assert (
+        cli.main(
+            [
+                "index-gtf",
+                "--gtf",
+                str(gtf_path),
+                "--output",
+                str(output_path),
+            ]
+        )
+        == 0
+    )
+
+    with sqlite3.connect(output_path) as connection:
+        transcript_count = connection.execute("SELECT COUNT(*) FROM transcripts").fetchone()[0]
+        exon_count = connection.execute("SELECT COUNT(*) FROM exons").fetchone()[0]
+        gene_name = connection.execute(
+            "SELECT gene_name FROM transcripts WHERE transcript_id = 'TX1'"
+        ).fetchone()[0]
+
+    assert transcript_count == 1
+    assert exon_count == 2
+    assert gene_name == "MYGENE"
+    assert capsys.readouterr().out == (
+        "Indexed transcripts: 1\n"
+        "Indexed exons: 2\n"
+        f"Wrote: {output_path}\n"
+    )
+
+
 def test_plot_requires_output(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     background_path = tmp_path / "background.tsv"
     background_path.write_text(
@@ -224,6 +285,48 @@ def test_plot_requires_output(tmp_path: Path, capsys: pytest.CaptureFixture[str]
 
     assert exc_info.value.code == 2
     assert "the following arguments are required: --output" in capsys.readouterr().err
+
+
+def test_plot_transcript_requires_transcript_db(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    background_path = tmp_path / "background.tsv"
+    background_path.write_text(
+        "\n".join(
+            [
+                "# normalization=median-of-ratios",
+                "# baseline=median-positive-count",
+                "# samples=2",
+                "# lower_percentile=5",
+                "# upper_percentile=95",
+                "CONTIG\tSTART\tEND\tBASELINE_MEDIAN\tN\tBG_NORM_MEAN\tBG_NORM_MEDIAN\tBG_NORM_SD\tBG_NORM_P5\tBG_NORM_P95",
+                "chr1\t100\t199\t12.5\t2\t12.5\t12.5\t0\t12.5\t12.5",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    sample_path = tmp_path / "sample.tsv"
+    write_read_counts(sample_path, [("chr1", 100, 199, 10)])
+    output_path = tmp_path / "plot.svg"
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main(
+            [
+                "plot",
+                "--read-counts",
+                str(sample_path),
+                "--background",
+                str(background_path),
+                "--transcript",
+                "TX1",
+                "--output",
+                str(output_path),
+            ]
+        )
+
+    assert exc_info.value.code == 2
+    assert "--transcript-db is required when --transcript is used" in capsys.readouterr().err
 
 
 def test_plot_log2_ratio_writes_svg_with_zero_centered_axis(
@@ -337,6 +440,9 @@ def test_plot_transcript_writes_exon_track_and_gene_name(
             'chr1\tsource\texon\t180\t220\t.\t+\t.\tgene_id "GENE1"; gene_name "MYGENE"; transcript_id "TX1"; exon_number "2";',
         ],
     )
+    db_path = tmp_path / "transcripts.sqlite"
+    build_transcript_db(gtf_path, db_path)
+    capsys.readouterr()
     output_path = tmp_path / "plot.svg"
 
     assert (
@@ -349,8 +455,8 @@ def test_plot_transcript_writes_exon_track_and_gene_name(
                 str(background_path),
                 "--transcript",
                 "TX1",
-                "--gtf",
-                str(gtf_path),
+                "--transcript-db",
+                str(db_path),
                 "--sample-name",
                 "Sample A",
                 "--highlight",
@@ -464,6 +570,9 @@ def test_brca1_synthetic_example_renders(
 ) -> None:
     example_dir = Path(__file__).parents[1] / "examples" / "brca1_synthetic"
     output_path = tmp_path / "brca1_synthetic.svg"
+    db_path = tmp_path / "brca1.sqlite"
+    build_transcript_db(example_dir / "brca1_mane_minimal.gtf", db_path)
+    capsys.readouterr()
 
     assert (
         cli.main(
@@ -475,8 +584,8 @@ def test_brca1_synthetic_example_renders(
                 str(example_dir / "background.tsv"),
                 "--transcript",
                 "NM_007294.4",
-                "--gtf",
-                str(example_dir / "brca1_mane_minimal.gtf"),
+                "--transcript-db",
+                str(db_path),
                 "--sample-name",
                 "Synthetic BRCA1 exon 13-15 deletion",
                 "--highlight",
@@ -542,6 +651,9 @@ def test_plot_transcript_uses_open_points_for_non_exonic_intervals(
             'chr1\tsource\texon\t180\t220\t.\t+\t.\tgene_id "GENE1"; gene_name "MYGENE"; transcript_id "TX1"; exon_number "2";',
         ],
     )
+    db_path = tmp_path / "transcripts.sqlite"
+    build_transcript_db(gtf_path, db_path)
+    capsys.readouterr()
     output_path = tmp_path / "plot.svg"
 
     assert (
@@ -554,8 +666,8 @@ def test_plot_transcript_uses_open_points_for_non_exonic_intervals(
                 str(background_path),
                 "--transcript",
                 "TX1",
-                "--gtf",
-                str(gtf_path),
+                "--transcript-db",
+                str(db_path),
                 "--output",
                 str(output_path),
             ]
@@ -612,6 +724,9 @@ def test_plot_reverse_transcript_arrows_do_not_touch_exons(
             'chr1\tsource\texon\t180\t220\t.\t-\t.\tgene_id "GENE1"; gene_name "MYGENE"; transcript_id "RTX1"; exon_number "1";',
         ],
     )
+    db_path = tmp_path / "transcripts.sqlite"
+    build_transcript_db(gtf_path, db_path)
+    capsys.readouterr()
     output_path = tmp_path / "plot.svg"
 
     assert (
@@ -624,8 +739,8 @@ def test_plot_reverse_transcript_arrows_do_not_touch_exons(
                 str(background_path),
                 "--transcript",
                 "RTX1",
-                "--gtf",
-                str(gtf_path),
+                "--transcript-db",
+                str(db_path),
                 "--output",
                 str(output_path),
             ]
@@ -682,6 +797,9 @@ def test_plot_transcript_keeps_full_transcript_width_when_exons_are_uncovered(
             'chr1\tsource\texon\t350\t400\t.\t+\t.\tgene_id "GENE1"; gene_name "MYGENE"; transcript_id "SPARSE1"; exon_number "2";',
         ],
     )
+    db_path = tmp_path / "transcripts.sqlite"
+    build_transcript_db(gtf_path, db_path)
+    capsys.readouterr()
     output_path = tmp_path / "plot.svg"
 
     assert (
@@ -694,8 +812,8 @@ def test_plot_transcript_keeps_full_transcript_width_when_exons_are_uncovered(
                 str(background_path),
                 "--transcript",
                 "SPARSE1",
-                "--gtf",
-                str(gtf_path),
+                "--transcript-db",
+                str(db_path),
                 "--output",
                 str(output_path),
             ]
@@ -766,6 +884,9 @@ def test_plot_transcript_prunes_overlapping_exon_labels(
             'chr1\tsource\texon\t9950\t10000\t.\t+\t.\tgene_id "GENE1"; gene_name "MYGENE"; transcript_id "CLOSE1"; exon_number "7";',
         ],
     )
+    db_path = tmp_path / "transcripts.sqlite"
+    build_transcript_db(gtf_path, db_path)
+    capsys.readouterr()
     output_path = tmp_path / "plot.svg"
 
     assert (
@@ -778,8 +899,8 @@ def test_plot_transcript_prunes_overlapping_exon_labels(
                 str(background_path),
                 "--transcript",
                 "CLOSE1",
-                "--gtf",
-                str(gtf_path),
+                "--transcript-db",
+                str(db_path),
                 "--output",
                 str(output_path),
             ]
@@ -844,6 +965,9 @@ def test_plot_reverse_transcript_prunes_overlapping_exon_labels(
             'chr1\tsource\texon\t155\t165\t.\t-\t.\tgene_id "GENE1"; gene_name "MYGENE"; transcript_id "RTX1"; exon_number "7";',
         ],
     )
+    db_path = tmp_path / "transcripts.sqlite"
+    build_transcript_db(gtf_path, db_path)
+    capsys.readouterr()
     output_path = tmp_path / "plot.svg"
 
     assert (
@@ -856,8 +980,8 @@ def test_plot_reverse_transcript_prunes_overlapping_exon_labels(
                 str(background_path),
                 "--transcript",
                 "RTX1",
-                "--gtf",
-                str(gtf_path),
+                "--transcript-db",
+                str(db_path),
                 "--output",
                 str(output_path),
             ]

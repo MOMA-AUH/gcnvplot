@@ -27,7 +27,7 @@ For `create-background`, provide a text file with one sample read-count path per
 
 For `plot`, provide one sample read-count file, one background TSV produced by `create-background`, and a genomic region such as `chr1:100-299`. This command writes an SVG plot showing the sample log2 signal relative to the background cohort.
 
-You can also use `--transcript <TRANSCRIPT_ID>` together with `--gtf <annotations.gtf[.gz]>` to plot by transcript and add an exon track beneath the signal plot. If you want a custom label in the right-side info panel, pass `--sample-name <LABEL>`.
+If you want to plot by transcript, first build a SQLite transcript database once with `index-gtf`, then use `--transcript <TRANSCRIPT_ID>` together with `--transcript-db <annotations.sqlite>`. This adds an exon track beneath the signal plot. If you want a custom label in the right-side info panel, pass `--sample-name <LABEL>`.
 
 The plot info panel shows `Sample` when provided, then `Gene`, `Transcript`, and `Region`, followed by a separated `Highlight` and `Exons` section when applicable.
 
@@ -38,10 +38,15 @@ gcnvplot create-background \
   --read-counts-list background_inputs.txt \
   --output background.tsv
 
+gcnvplot index-gtf \
+  --gtf annotations.gtf.gz \
+  --output annotations.sqlite
+
 gcnvplot plot \
   --read-counts sample.tsv \
   --background background.tsv \
-  --region chr1:100-299 \
+  --transcript NM_007294.4 \
+  --transcript-db annotations.sqlite \
   --sample-name SAMPLE_01 \
   --output plot.svg
 ```
@@ -55,11 +60,15 @@ A tiny synthetic BRCA1 transcript example is available in [`examples/brca1_synth
 You can render it directly from the repository root:
 
 ```bash
+gcnvplot index-gtf \
+  --gtf examples/brca1_synthetic/brca1_mane_minimal.gtf \
+  --output examples/brca1_synthetic/brca1_mane_minimal.sqlite
+
 gcnvplot plot \
   --read-counts examples/brca1_synthetic/sample_deletion.tsv \
   --background examples/brca1_synthetic/background.tsv \
   --transcript NM_007294.4 \
-  --gtf examples/brca1_synthetic/brca1_mane_minimal.gtf \
+  --transcript-db examples/brca1_synthetic/brca1_mane_minimal.sqlite \
   --sample-name "Synthetic BRCA1 exon 13-15 deletion" \
   --highlight chr17:43070928-43076614 \
   --output examples/brca1_synthetic/brca1_synthetic.svg

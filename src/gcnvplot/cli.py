@@ -6,7 +6,7 @@ import argparse
 from pathlib import Path
 
 from . import __version__
-from .core import build_background, parse_region, plot_sample
+from .core import build_background, index_transcripts, parse_region, plot_sample
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -41,6 +41,24 @@ def build_parser() -> argparse.ArgumentParser:
     )
     build.set_defaults(handler=build_background)
 
+    index = subparsers.add_parser(
+        "index-gtf",
+        help="Index transcript annotations from a GTF into a SQLite database.",
+    )
+    index.add_argument(
+        "--gtf",
+        type=Path,
+        required=True,
+        help="GTF file to index; gzipped files are supported.",
+    )
+    index.add_argument(
+        "--output",
+        type=Path,
+        required=True,
+        help="Output SQLite database path.",
+    )
+    index.set_defaults(handler=index_transcripts)
+
     plot = subparsers.add_parser(
         "plot",
         help="Plot one sample against a background cohort.",
@@ -55,12 +73,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     region_or_transcript.add_argument(
         "--transcript",
-        help="Transcript ID to plot using exon coordinates from a GTF file.",
+        help="Transcript ID to plot using exon coordinates from a transcript database.",
     )
     plot.add_argument(
-        "--gtf",
+        "--transcript-db",
         type=Path,
-        help="GTF file for --transcript; gzipped files are supported.",
+        help="SQLite transcript database from index-gtf for use with --transcript.",
     )
     plot.add_argument(
         "--highlight",
@@ -80,8 +98,10 @@ def main(argv: list[str] | None = None) -> int:
     """Run the CLI."""
     parser = build_parser()
     args = parser.parse_args(argv)
-    if getattr(args, "transcript", None) is not None and getattr(args, "gtf", None) is None:
-        parser.error("--gtf is required when --transcript is used")
+    if getattr(args, "transcript", None) is not None and getattr(args, "transcript_db", None) is None:
+        parser.error("--transcript-db is required when --transcript is used")
+    if getattr(args, "transcript", None) is None and getattr(args, "transcript_db", None) is not None:
+        parser.error("--transcript-db can only be used with --transcript")
     handler = getattr(args, "handler", None)
     if handler is None:
         parser.print_help()

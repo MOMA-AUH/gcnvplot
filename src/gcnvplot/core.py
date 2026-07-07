@@ -7,6 +7,7 @@ import csv
 import gzip
 import html
 import math
+import sqlite3
 from dataclasses import dataclass
 from collections import defaultdict
 from pathlib import Path
@@ -260,13 +261,33 @@ def transcript_id_matches(value: str | None, target: str) -> bool:
     return value.split(".", 1)[0] == target.split(".", 1)[0]
 
 
-def load_transcript_annotation(gtf_path: Path, transcript_id: str) -> TranscriptAnnotation:
-    """Load exon coordinates and gene name for one transcript from a GTF."""
-    contig: str | None = None
-    strand: str | None = None
-    gene_name: str | None = None
-    gene_id: str | None = None
-    exon_coords: list[tuple[int, int]] = []
+def _resolve_transcript_annotation(
+    annotations: dict[str, TranscriptAnnotation],
+    transcript_id: str,
+    source: Path,
+) -> TranscriptAnnotation:
+    """Resolve one transcript by exact ID or unversioned ID when unambiguous."""
+    exact = annotations.get(transcript_id)
+    if exact is not None:
+        return exact
+
+    root_id = transcript_id.split(".", 1)[0]
+    matches = [
+        annotation
+        for candidate_id, annotation in annotations.items()
+        if candidate_id.split(".", 1)[0] == root_id
+    ]
+    if not matches:
+        raise ValueError(f"{source}: transcript {transcript_id} not found or has no exons")
+    if len(matches) > 1:
+        versions = ", ".join(sorted(annotation.transcript_id for annotation in matches))
+        raise ValueError(f"{source}: transcript {transcript_id} is ambiguous; matches: {versions}")
+    return matches[0]
+
+
+def load_transcript_annotations(gtf_path: Path) -> dict[str, TranscriptAnnotation]:
+    """Load transcript annotations from a GTF keyed by exact transcript ID."""
+    records: dict[str, dict[str, object]] = {}
 
     with open_text(gtf_path) as handle:
         for line in handle:
@@ -277,46 +298,224 @@ def load_transcript_annotation(gtf_path: Path, transcript_id: str) -> Transcript
                 continue
             seqname, _source, feature, start_text, end_text, _score, feature_strand, _frame, attributes_text = fields
             attributes = parse_gtf_attributes(attributes_text)
-            if not transcript_id_matches(attributes.get("transcript_id"), transcript_id):
+            transcript_id = attributes.get("transcript_id")
+            if transcript_id is None:
                 continue
+
+            record = records.setdefault(
+                transcript_id,
+                {
+                    "contig": None,
+                    "strand": None,
+                    "gene_name": None,
+                    "gene_id": None,
+                    "exon_coords": [],
+                },
+            )
 
             feature_contig = seqname
             feature_strand = feature_strand
+            contig = record["contig"]
+            strand = record["strand"]
             if contig is None:
-                contig = feature_contig
+                record["contig"] = feature_contig
             elif contig != feature_contig:
                 raise ValueError(f"{gtf_path}: transcript {transcript_id} spans multiple contigs")
 
             if strand is None:
-                strand = feature_strand
+                record["strand"] = feature_strand
             elif strand != feature_strand:
                 raise ValueError(f"{gtf_path}: transcript {transcript_id} has inconsistent strands")
 
-            if gene_name is None:
-                gene_name = attributes.get("gene_name") or attributes.get("gene_id")
-            if gene_id is None:
-                gene_id = attributes.get("gene_id")
+            if record["gene_name"] is None:
+                record["gene_name"] = attributes.get("gene_name") or attributes.get("gene_id")
+            if record["gene_id"] is None:
+                record["gene_id"] = attributes.get("gene_id")
 
             if feature == "exon":
+                exon_coords = record["exon_coords"]
+                assert isinstance(exon_coords, list)
                 exon_coords.append((int(start_text), int(end_text)))
 
-    if not exon_coords:
-        raise ValueError(f"{gtf_path}: transcript {transcript_id} not found or has no exons")
-    if contig is None or strand is None:
-        raise ValueError(f"{gtf_path}: transcript {transcript_id} is missing contig or strand information")
+    annotations: dict[str, TranscriptAnnotation] = {}
+    for transcript_id, record in records.items():
+        exon_coords = record["exon_coords"]
+        assert isinstance(exon_coords, list)
+        if not exon_coords:
+            continue
 
-    ordered_coords = sorted(exon_coords, key=lambda item: item[0], reverse=strand == "-")
-    exons = [TranscriptExon(number=index + 1, start=start, end=end) for index, (start, end) in enumerate(ordered_coords)]
-    transcript_gene_name = gene_name or gene_id or transcript_id
-    start = min(exon.start for exon in exons)
-    end = max(exon.end for exon in exons)
+        contig = record["contig"]
+        strand = record["strand"]
+        if contig is None or strand is None:
+            raise ValueError(f"{gtf_path}: transcript {transcript_id} is missing contig or strand information")
+
+        ordered_coords = sorted(exon_coords, key=lambda item: item[0], reverse=strand == "-")
+        exons = [
+            TranscriptExon(number=index + 1, start=start, end=end)
+            for index, (start, end) in enumerate(ordered_coords)
+        ]
+        gene_name = record["gene_name"]
+        gene_id = record["gene_id"]
+        transcript_gene_name = str(gene_name or gene_id or transcript_id)
+        start = min(exon.start for exon in exons)
+        end = max(exon.end for exon in exons)
+        annotations[transcript_id] = TranscriptAnnotation(
+            transcript_id=transcript_id,
+            gene_name=transcript_gene_name,
+            contig=str(contig),
+            strand=str(strand),
+            start=start,
+            end=end,
+            exons=exons,
+        )
+
+    return annotations
+
+
+def load_transcript_annotation(gtf_path: Path, transcript_id: str) -> TranscriptAnnotation:
+    """Load one transcript annotation from a GTF."""
+    annotations = load_transcript_annotations(gtf_path)
+    return _resolve_transcript_annotation(annotations, transcript_id, gtf_path)
+
+
+def index_transcripts(args: argparse.Namespace) -> int:
+    """Index transcript annotations from a GTF into a SQLite database."""
+    annotations = load_transcript_annotations(args.gtf)
+    transcript_count = len(annotations)
+    exon_count = sum(len(annotation.exons) for annotation in annotations.values())
+
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    if args.output.exists():
+        args.output.unlink()
+
+    with sqlite3.connect(args.output) as connection:
+        connection.executescript(
+            """
+            CREATE TABLE metadata (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            );
+            CREATE TABLE transcripts (
+                transcript_id TEXT PRIMARY KEY,
+                transcript_id_root TEXT NOT NULL,
+                gene_name TEXT NOT NULL,
+                contig TEXT NOT NULL,
+                strand TEXT NOT NULL,
+                start INTEGER NOT NULL,
+                end INTEGER NOT NULL
+            );
+            CREATE TABLE exons (
+                transcript_id TEXT NOT NULL,
+                exon_number INTEGER NOT NULL,
+                start INTEGER NOT NULL,
+                end INTEGER NOT NULL,
+                PRIMARY KEY (transcript_id, exon_number),
+                FOREIGN KEY (transcript_id) REFERENCES transcripts(transcript_id) ON DELETE CASCADE
+            );
+            CREATE INDEX idx_transcripts_root ON transcripts (transcript_id_root);
+            CREATE INDEX idx_exons_transcript ON exons (transcript_id);
+            """
+        )
+        connection.executemany(
+            "INSERT INTO metadata(key, value) VALUES(?, ?)",
+            [
+                ("source_gtf", str(args.gtf)),
+                ("schema_version", "1"),
+            ],
+        )
+        connection.executemany(
+            """
+            INSERT INTO transcripts(
+                transcript_id,
+                transcript_id_root,
+                gene_name,
+                contig,
+                strand,
+                start,
+                end
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    annotation.transcript_id,
+                    annotation.transcript_id.split(".", 1)[0],
+                    annotation.gene_name,
+                    annotation.contig,
+                    annotation.strand,
+                    annotation.start,
+                    annotation.end,
+                )
+                for annotation in annotations.values()
+            ],
+        )
+        connection.executemany(
+            "INSERT INTO exons(transcript_id, exon_number, start, end) VALUES (?, ?, ?, ?)",
+            [
+                (annotation.transcript_id, exon.number, exon.start, exon.end)
+                for annotation in annotations.values()
+                for exon in annotation.exons
+            ],
+        )
+
+    print(f"Indexed transcripts: {transcript_count}")
+    print(f"Indexed exons: {exon_count}")
+    print(f"Wrote: {args.output}")
+    return 0
+
+
+def load_transcript_annotation_from_db(db_path: Path, transcript_id: str) -> TranscriptAnnotation:
+    """Load one transcript annotation from a SQLite transcript database."""
+    with sqlite3.connect(db_path) as connection:
+        connection.row_factory = sqlite3.Row
+        transcript_row = connection.execute(
+            """
+            SELECT transcript_id, gene_name, contig, strand, start, end
+            FROM transcripts
+            WHERE transcript_id = ?
+            """,
+            (transcript_id,),
+        ).fetchone()
+        if transcript_row is None:
+            root_id = transcript_id.split(".", 1)[0]
+            transcript_rows = connection.execute(
+                """
+                SELECT transcript_id, gene_name, contig, strand, start, end
+                FROM transcripts
+                WHERE transcript_id_root = ?
+                ORDER BY transcript_id
+                """,
+                (root_id,),
+            ).fetchall()
+            if not transcript_rows:
+                raise ValueError(f"{db_path}: transcript {transcript_id} not found")
+            if len(transcript_rows) > 1:
+                versions = ", ".join(str(row["transcript_id"]) for row in transcript_rows)
+                raise ValueError(f"{db_path}: transcript {transcript_id} is ambiguous; matches: {versions}")
+            transcript_row = transcript_rows[0]
+
+        exon_rows = connection.execute(
+            """
+            SELECT exon_number, start, end
+            FROM exons
+            WHERE transcript_id = ?
+            ORDER BY exon_number
+            """,
+            (transcript_row["transcript_id"],),
+        ).fetchall()
+        if not exon_rows:
+            raise ValueError(f"{db_path}: transcript {transcript_row['transcript_id']} has no indexed exons")
+
+    exons = [
+        TranscriptExon(number=int(row["exon_number"]), start=int(row["start"]), end=int(row["end"]))
+        for row in exon_rows
+    ]
     return TranscriptAnnotation(
-        transcript_id=transcript_id,
-        gene_name=transcript_gene_name,
-        contig=contig,
-        strand=strand,
-        start=start,
-        end=end,
+        transcript_id=str(transcript_row["transcript_id"]),
+        gene_name=str(transcript_row["gene_name"]),
+        contig=str(transcript_row["contig"]),
+        strand=str(transcript_row["strand"]),
+        start=int(transcript_row["start"]),
+        end=int(transcript_row["end"]),
         exons=exons,
     )
 
@@ -829,7 +1028,7 @@ def plot_sample(args: argparse.Namespace) -> int:
     transcript: TranscriptAnnotation | None = None
     region = args.region
     if args.transcript is not None:
-        transcript = load_transcript_annotation(args.gtf, args.transcript)
+        transcript = load_transcript_annotation_from_db(args.transcript_db, args.transcript)
         region = (transcript.contig, transcript.start, transcript.end)
 
     background_summary = parse_background(args.background)

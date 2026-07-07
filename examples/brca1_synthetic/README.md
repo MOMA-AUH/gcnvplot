@@ -13,11 +13,15 @@ The intervals are roughly 1 kb and have different expected depths, mimicking var
 Run from the repository root:
 
 ```bash
+gcnvplot index-gtf \
+  --gtf examples/brca1_synthetic/brca1_mane_minimal.gtf \
+  --output examples/brca1_synthetic/brca1_mane_minimal.sqlite
+
 gcnvplot plot \
   --read-counts examples/brca1_synthetic/sample_deletion.tsv \
   --background examples/brca1_synthetic/background.tsv \
   --transcript NM_007294.4 \
-  --gtf examples/brca1_synthetic/brca1_mane_minimal.gtf \
+  --transcript-db examples/brca1_synthetic/brca1_mane_minimal.sqlite \
   --sample-name "Synthetic BRCA1 exon 13-15 deletion" \
   --highlight chr17:43070928-43076614 \
   --output examples/brca1_synthetic/brca1_synthetic.svg
