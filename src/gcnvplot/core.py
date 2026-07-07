@@ -378,17 +378,17 @@ def load_transcript_annotation(gtf_path: Path, transcript_id: str) -> Transcript
     return _resolve_transcript_annotation(annotations, transcript_id, gtf_path)
 
 
-def index_transcripts(args: argparse.Namespace) -> int:
+def index_gtf(gtf_path: Path, output: Path) -> tuple[int, int]:
     """Index transcript annotations from a GTF into a SQLite database."""
-    annotations = load_transcript_annotations(args.gtf)
+    annotations = load_transcript_annotations(gtf_path)
     transcript_count = len(annotations)
     exon_count = sum(len(annotation.exons) for annotation in annotations.values())
 
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    if args.output.exists():
-        args.output.unlink()
+    output.parent.mkdir(parents=True, exist_ok=True)
+    if output.exists():
+        output.unlink()
 
-    with sqlite3.connect(args.output) as connection:
+    with sqlite3.connect(output) as connection:
         connection.executescript(
             """
             CREATE TABLE metadata (
@@ -419,7 +419,7 @@ def index_transcripts(args: argparse.Namespace) -> int:
         connection.executemany(
             "INSERT INTO metadata(key, value) VALUES(?, ?)",
             [
-                ("source_gtf", str(args.gtf)),
+                ("source_gtf", str(gtf_path)),
                 ("schema_version", "1"),
             ],
         )
@@ -457,17 +457,39 @@ def index_transcripts(args: argparse.Namespace) -> int:
             ],
         )
 
+    return transcript_count, exon_count
+
+
+def index_transcripts(args: argparse.Namespace) -> int:
+    """CLI handler for indexing transcript annotations into SQLite."""
+    transcript_count, exon_count = index_gtf(args.gtf, args.output)
     print(f"Indexed transcripts: {transcript_count}")
     print(f"Indexed exons: {exon_count}")
     print(f"Wrote: {args.output}")
     return 0
 
 
-def load_transcript_annotation_from_db(db_path: Path, transcript_id: str) -> TranscriptAnnotation:
-    """Load one transcript annotation from a SQLite transcript database."""
-    with sqlite3.connect(db_path) as connection:
-        connection.row_factory = sqlite3.Row
-        transcript_row = connection.execute(
+class TranscriptIndex:
+    """Reusable SQLite-backed transcript annotation index."""
+
+    def __init__(self, path: Path):
+        self.path = Path(path)
+        self._connection = sqlite3.connect(self.path)
+        self._connection.row_factory = sqlite3.Row
+
+    def close(self) -> None:
+        """Close the underlying SQLite connection."""
+        self._connection.close()
+
+    def __enter__(self) -> "TranscriptIndex":
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback) -> None:
+        self.close()
+
+    def get(self, transcript_id: str) -> TranscriptAnnotation:
+        """Return one transcript annotation by exact ID or unversioned ID when unambiguous."""
+        transcript_row = self._connection.execute(
             """
             SELECT transcript_id, gene_name, contig, strand, start, end
             FROM transcripts
@@ -477,7 +499,7 @@ def load_transcript_annotation_from_db(db_path: Path, transcript_id: str) -> Tra
         ).fetchone()
         if transcript_row is None:
             root_id = transcript_id.split(".", 1)[0]
-            transcript_rows = connection.execute(
+            transcript_rows = self._connection.execute(
                 """
                 SELECT transcript_id, gene_name, contig, strand, start, end
                 FROM transcripts
@@ -487,13 +509,13 @@ def load_transcript_annotation_from_db(db_path: Path, transcript_id: str) -> Tra
                 (root_id,),
             ).fetchall()
             if not transcript_rows:
-                raise ValueError(f"{db_path}: transcript {transcript_id} not found")
+                raise ValueError(f"{self.path}: transcript {transcript_id} not found")
             if len(transcript_rows) > 1:
                 versions = ", ".join(str(row["transcript_id"]) for row in transcript_rows)
-                raise ValueError(f"{db_path}: transcript {transcript_id} is ambiguous; matches: {versions}")
+                raise ValueError(f"{self.path}: transcript {transcript_id} is ambiguous; matches: {versions}")
             transcript_row = transcript_rows[0]
 
-        exon_rows = connection.execute(
+        exon_rows = self._connection.execute(
             """
             SELECT exon_number, start, end
             FROM exons
@@ -503,21 +525,27 @@ def load_transcript_annotation_from_db(db_path: Path, transcript_id: str) -> Tra
             (transcript_row["transcript_id"],),
         ).fetchall()
         if not exon_rows:
-            raise ValueError(f"{db_path}: transcript {transcript_row['transcript_id']} has no indexed exons")
+            raise ValueError(f"{self.path}: transcript {transcript_row['transcript_id']} has no indexed exons")
 
-    exons = [
-        TranscriptExon(number=int(row["exon_number"]), start=int(row["start"]), end=int(row["end"]))
-        for row in exon_rows
-    ]
-    return TranscriptAnnotation(
-        transcript_id=str(transcript_row["transcript_id"]),
-        gene_name=str(transcript_row["gene_name"]),
-        contig=str(transcript_row["contig"]),
-        strand=str(transcript_row["strand"]),
-        start=int(transcript_row["start"]),
-        end=int(transcript_row["end"]),
-        exons=exons,
-    )
+        exons = [
+            TranscriptExon(number=int(row["exon_number"]), start=int(row["start"]), end=int(row["end"]))
+            for row in exon_rows
+        ]
+        return TranscriptAnnotation(
+            transcript_id=str(transcript_row["transcript_id"]),
+            gene_name=str(transcript_row["gene_name"]),
+            contig=str(transcript_row["contig"]),
+            strand=str(transcript_row["strand"]),
+            start=int(transcript_row["start"]),
+            end=int(transcript_row["end"]),
+            exons=exons,
+        )
+
+
+def load_transcript_annotation_from_db(db_path: Path, transcript_id: str) -> TranscriptAnnotation:
+    """Load one transcript annotation from a SQLite transcript database."""
+    with TranscriptIndex(db_path) as transcript_index:
+        return transcript_index.get(transcript_id)
 
 
 def build_background(args: argparse.Namespace) -> int:
@@ -571,14 +599,13 @@ def build_background(args: argparse.Namespace) -> int:
     return 0
 
 
-def rows_for_plot(
-    args: argparse.Namespace,
+def plot_rows(
+    counts: dict[Interval, int],
     region: Interval,
     background_summary: BackgroundSummary,
     transcript: TranscriptAnnotation | None = None,
-) -> list[dict[str, object]]:
-    """Join one sample with the background for plotting."""
-    counts = parse_read_counts(args.read_counts)
+) -> tuple[list[dict[str, object]], int]:
+    """Join sample counts with the background for plotting."""
     background = background_summary.rows
     baselines = {
         interval: float(row["BASELINE_MEDIAN"])
@@ -624,6 +651,20 @@ def rows_for_plot(
         rows.append(row)
 
     if missing_background:
+        return rows, missing_background
+    return rows, 0
+
+
+def rows_for_plot(
+    args: argparse.Namespace,
+    region: Interval,
+    background_summary: BackgroundSummary,
+    transcript: TranscriptAnnotation | None = None,
+) -> list[dict[str, object]]:
+    """CLI helper to join one sample with the background for plotting."""
+    counts = parse_read_counts(args.read_counts)
+    rows, missing_background = plot_rows(counts, region, background_summary, transcript=transcript)
+    if missing_background:
         print(f"Skipped intervals missing from background: {missing_background}")
     return rows
 
@@ -644,9 +685,8 @@ def nice_ticks(start: int, end: int, max_ticks: int = 8) -> list[int]:
     return ticks
 
 
-def write_svg_plot(
+def _build_plot_svg(
     rows: list[dict[str, object]],
-    output: Path,
     title: str,
     signal: str,
     region: Interval,
@@ -654,8 +694,8 @@ def write_svg_plot(
     sample_name: str | None = None,
     highlight: Interval | None = None,
     transcript: TranscriptAnnotation | None = None,
-) -> None:
-    """Write a simple SVG plot for the sample and background."""
+) -> str:
+    """Build the SVG markup for a plot from prepared rows."""
     base_width = 1400
     height = 620
     left = 95
@@ -1019,8 +1059,121 @@ def write_svg_plot(
         ]
     )
 
+    return "\n".join(elements) + "\n"
+
+
+def write_svg_plot(
+    rows: list[dict[str, object]],
+    output: Path,
+    title: str,
+    signal: str,
+    region: Interval,
+    background_summary: BackgroundSummary,
+    sample_name: str | None = None,
+    highlight: Interval | None = None,
+    transcript: TranscriptAnnotation | None = None,
+) -> None:
+    """Write an SVG plot for the sample and background."""
+    svg = _build_plot_svg(
+        rows,
+        title,
+        signal,
+        region,
+        background_summary,
+        sample_name=sample_name,
+        highlight=highlight,
+        transcript=transcript,
+    )
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text("\n".join(elements) + "\n", encoding="utf-8")
+    output.write_text(svg, encoding="utf-8")
+
+
+def load_background(path: Path) -> BackgroundSummary:
+    """Load a background summary TSV."""
+    return parse_background(path)
+
+
+def _coerce_region(value: Interval | str) -> Interval:
+    if isinstance(value, str):
+        return parse_region(value)
+    return value
+
+
+def _coerce_highlight(value: Interval | str | None) -> Interval | None:
+    if value is None:
+        return None
+    return _coerce_region(value)
+
+
+def render_plot_svg(
+    read_counts: Path | dict[Interval, int],
+    background: Path | BackgroundSummary,
+    *,
+    region: Interval | str | None = None,
+    transcript_id: str | None = None,
+    transcript_index: Path | TranscriptIndex | None = None,
+    sample_name: str | None = None,
+    highlight: Interval | str | None = None,
+) -> str:
+    """Render a gcnvplot SVG for use in Python code or reports."""
+    if transcript_id is not None and transcript_index is None:
+        raise ValueError("transcript_index is required when transcript_id is provided")
+    if transcript_id is None and region is None:
+        raise ValueError("region is required when transcript_id is not provided")
+
+    transcript: TranscriptAnnotation | None = None
+    if transcript_id is not None:
+        if isinstance(transcript_index, TranscriptIndex):
+            transcript = transcript_index.get(transcript_id)
+        else:
+            with TranscriptIndex(Path(transcript_index)) as index:
+                transcript = index.get(transcript_id)
+        region_value: Interval = (transcript.contig, transcript.start, transcript.end)
+    else:
+        assert region is not None
+        region_value = _coerce_region(region)
+
+    background_summary = background if isinstance(background, BackgroundSummary) else load_background(Path(background))
+    counts = read_counts if isinstance(read_counts, dict) else parse_read_counts(Path(read_counts))
+    rows, _missing_background = plot_rows(counts, region_value, background_summary, transcript=transcript)
+    if not rows:
+        raise ValueError("No intervals with background statistics overlap the selected region.")
+
+    return _build_plot_svg(
+        rows,
+        "Normalized GATK GermlineCNVCaller Read Counts",
+        "log2-ratio",
+        region_value,
+        background_summary=background_summary,
+        sample_name=sample_name,
+        highlight=_coerce_highlight(highlight),
+        transcript=transcript,
+    )
+
+
+def write_plot(
+    read_counts: Path | dict[Interval, int],
+    background: Path | BackgroundSummary,
+    output: Path,
+    *,
+    region: Interval | str | None = None,
+    transcript_id: str | None = None,
+    transcript_index: Path | TranscriptIndex | None = None,
+    sample_name: str | None = None,
+    highlight: Interval | str | None = None,
+) -> None:
+    """Render and write a gcnvplot SVG."""
+    svg = render_plot_svg(
+        read_counts,
+        background,
+        region=region,
+        transcript_id=transcript_id,
+        transcript_index=transcript_index,
+        sample_name=sample_name,
+        highlight=highlight,
+    )
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(svg, encoding="utf-8")
 
 
 def plot_sample(args: argparse.Namespace) -> int:

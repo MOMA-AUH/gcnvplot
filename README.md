@@ -51,6 +51,48 @@ gcnvplot plot \
   --output plot.svg
 ```
 
+## Python API
+
+`gcnvplot` can also be used from Python code, for example when generating reports. Use `TranscriptIndex` to keep the SQLite transcript database open while rendering multiple plots.
+
+Use `render_plot_svg` when you want the SVG as a string, for example for embedding the plot directly into an HTML report or notebook:
+
+```python
+from pathlib import Path
+
+import gcnvplot
+
+with gcnvplot.TranscriptIndex(Path("annotations.sqlite")) as transcript_index:
+    svg = gcnvplot.render_plot_svg(
+        Path("sample.tsv"),
+        Path("background.tsv"),
+        transcript_id="NM_007294.4",
+        transcript_index=transcript_index,
+        sample_name="SAMPLE_01",
+        highlight="chr17:43070928-43076614",
+    )
+```
+
+
+Use `write_plot` when you just want the finished SVG saved to disk. It is a convenience wrapper around `render_plot_svg`.
+
+```python
+from pathlib import Path
+
+import gcnvplot
+
+with gcnvplot.TranscriptIndex(Path("annotations.sqlite")) as transcript_index:
+    gcnvplot.write_plot(
+        Path("sample.tsv"),
+        Path("background.tsv"),
+        Path("plot.svg"),
+        transcript_id="NM_007294.4",
+        transcript_index=transcript_index,
+        sample_name="SAMPLE_01",
+        highlight="chr17:43070928-43076614",
+    )
+```
+
 ## Synthetic example
 
 A tiny synthetic BRCA1 transcript example is available in [`examples/brca1_synthetic`](examples/brca1_synthetic). It demonstrates a highlighted multi-exon deletion, filled and open sample dots, and an uncovered-exon marker.

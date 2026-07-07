@@ -612,6 +612,42 @@ def test_brca1_synthetic_example_renders(
     )
 
 
+def test_python_api_renders_with_reusable_transcript_index(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    example_dir = Path(__file__).parents[1] / "examples" / "brca1_synthetic"
+    db_path = tmp_path / "brca1.sqlite"
+    build_transcript_db(example_dir / "brca1_mane_minimal.gtf", db_path)
+    capsys.readouterr()
+
+    with gcnvplot.TranscriptIndex(db_path) as transcript_index:
+        svg = gcnvplot.render_plot_svg(
+            example_dir / "sample_deletion.tsv",
+            example_dir / "background.tsv",
+            transcript_id="NM_007294.4",
+            transcript_index=transcript_index,
+            sample_name="Synthetic BRCA1 exon 13-15 deletion",
+            highlight="chr17:43070928-43076614",
+        )
+
+        output_path = tmp_path / "api_plot.svg"
+        gcnvplot.write_plot(
+            example_dir / "sample_deletion.tsv",
+            example_dir / "background.tsv",
+            output_path,
+            transcript_id="NM_007294.4",
+            transcript_index=transcript_index,
+            sample_name="Synthetic BRCA1 exon 13-15 deletion",
+            highlight="chr17:43070928-43076614",
+        )
+
+    assert "BRCA1" in svg
+    assert "Synthetic BRCA1 exon 13-15 deletion" in svg
+    assert "point point-open" in svg
+    assert output_path.read_text(encoding="utf-8") == svg
+    assert capsys.readouterr().out == ""
+
+
 def test_plot_transcript_uses_open_points_for_non_exonic_intervals(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
