@@ -6,7 +6,8 @@ import argparse
 from pathlib import Path
 
 from . import __version__
-from .core import build_background, index_transcripts, parse_region, plot_sample
+from .cli_handlers import build_background, index_transcripts, plot_sample
+from .utils import parse_region
 
 
 def build_parser() -> argparse.ArgumentParser:
