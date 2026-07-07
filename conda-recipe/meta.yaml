@@ -1,5 +1,5 @@
 {% set name = "gcnvplot" %}
-{% set version = "0.5.0" %}
+{% set version = "1.0.0" %}
 
 package:
   name: {{ name|lower }}
@@ -17,7 +17,7 @@ requirements:
   host:
     - python >=3.10
     - pip
-    - setuptools >=69
+    - setuptools >=77
     - wheel
   run:
     - python >=3.10

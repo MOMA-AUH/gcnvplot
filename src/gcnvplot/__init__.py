@@ -7,7 +7,7 @@ from .read_counts import parse_read_counts
 from .transcripts import TranscriptIndex, index_gtf
 from .utils import parse_region
 
-__version__ = "0.5.0"
+__version__ = "1.0.0"
 
 __all__ = [
     "BackgroundSummary",
