@@ -21,7 +21,7 @@ gcnvplot --version
 
 ## Inputs and output
 
-`gcnvplot` expects GATK `CollectReadCounts` tables as input. These can be plain TSV files or gzipped TSV files, and must contain the columns `CONTIG`, `START`, `END`, and `COUNT`.
+The tool `gcnvplot` expects GATK `CollectReadCounts` tables as input. These can be plain TSV files or gzipped TSV files, and must contain the columns `CONTIG`, `START`, `END`, and `COUNT`.
 
 For `create-background`, provide a text file with one sample read-count path per line. This command writes a background cohort TSV with interval-wise normalized summary statistics and a per-interval baseline median.
 
@@ -53,7 +53,30 @@ gcnvplot plot \
 
 ## Python API
 
-`gcnvplot` can also be used from Python code, for example when generating reports. Use `TranscriptIndex` to keep the SQLite transcript database open while rendering multiple plots.
+The Python package `gcnvplot` can also be used from Python code, for example when generating reports. Use `TranscriptIndex` to keep the SQLite transcript database open while rendering multiple plots.
+
+Use `create_background` to build an in-memory background summary from read-count TSV paths or already parsed read-count dictionaries. Use `write_background` when you want to save the same summary format used by the CLI:
+
+```python
+from pathlib import Path
+
+import gcnvplot
+
+background = gcnvplot.create_background(
+    [
+        Path("background_sample_1.tsv"),
+        Path("background_sample_2.tsv"),
+    ]
+)
+
+gcnvplot.write_background(
+    [
+        Path("background_sample_1.tsv"),
+        Path("background_sample_2.tsv"),
+    ],
+    Path("background.tsv"),
+)
+```
 
 Use `render_plot_svg` when you want the SVG as a string, for example for embedding the plot directly into an HTML report or notebook:
 
@@ -62,10 +85,12 @@ from pathlib import Path
 
 import gcnvplot
 
+background = gcnvplot.load_background(Path("background.tsv"))
+
 with gcnvplot.TranscriptIndex(Path("annotations.sqlite")) as transcript_index:
     svg = gcnvplot.render_plot_svg(
         Path("sample.tsv"),
-        Path("background.tsv"),
+        background,
         transcript_id="NM_007294.4",
         transcript_index=transcript_index,
         sample_name="SAMPLE_01",
@@ -73,6 +98,8 @@ with gcnvplot.TranscriptIndex(Path("annotations.sqlite")) as transcript_index:
     )
 ```
 
+Provide exactly one of `region` or `transcript_id`. When using `transcript_id`, also provide `transcript_index`.
+By default, `render_plot_svg` raises a `ValueError` if any selected sample intervals are missing usable background statistics. Pass `strict_background=False` only when you deliberately want to skip those intervals.
 
 Use `write_plot` when you just want the finished SVG saved to disk. It is a convenience wrapper around `render_plot_svg`.
 

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from .background import (
     BACKGROUND_FIELDS,
+    create_background,
     interval_baselines,
     load_background,
     log2_ratio,
@@ -46,6 +47,7 @@ __all__ = [
     "_coerce_region",
     "_resolve_transcript_annotation",
     "build_background",
+    "create_background",
     "fmt",
     "index_gtf",
     "index_transcripts",

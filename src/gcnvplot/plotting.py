@@ -81,18 +81,28 @@ def _coerce_highlight(value: Interval | str | None) -> Interval | None:
 
 
 def render_plot_svg(
-    read_counts: Path | dict[Interval, int],
-    background: Path | BackgroundSummary,
+    read_counts: str | Path | dict[Interval, int],
+    background: str | Path | BackgroundSummary,
     *,
     region: Interval | str | None = None,
     transcript_id: str | None = None,
-    transcript_index: Path | TranscriptIndex | None = None,
+    transcript_index: str | Path | TranscriptIndex | None = None,
     sample_name: str | None = None,
     highlight: Interval | str | None = None,
+    strict_background: bool = True,
 ) -> str:
-    """Render a gcnvplot SVG for use in Python code or reports."""
+    """Render a gcnvplot SVG for use in Python code or reports.
+
+    Provide exactly one of ``region`` or ``transcript_id``. When
+    ``strict_background`` is true, selected intervals without usable background
+    statistics raise ``ValueError`` instead of being silently skipped.
+    """
+    if region is not None and transcript_id is not None:
+        raise ValueError("region and transcript_id are mutually exclusive")
     if transcript_id is not None and transcript_index is None:
         raise ValueError("transcript_index is required when transcript_id is provided")
+    if transcript_id is None and transcript_index is not None:
+        raise ValueError("transcript_index can only be used when transcript_id is provided")
     if transcript_id is None and region is None:
         raise ValueError("region is required when transcript_id is not provided")
 
@@ -108,9 +118,27 @@ def render_plot_svg(
         assert region is not None
         region_value = _coerce_region(region)
 
-    background_summary = background if isinstance(background, BackgroundSummary) else load_background(Path(background))
-    counts = read_counts if isinstance(read_counts, dict) else parse_read_counts(Path(read_counts))
-    rows, _missing_background = plot_rows(counts, region_value, background_summary, transcript=transcript)
+    background_summary = (
+        background
+        if isinstance(background, BackgroundSummary)
+        else load_background(Path(background))
+    )
+    counts = (
+        read_counts
+        if isinstance(read_counts, dict)
+        else parse_read_counts(Path(read_counts))
+    )
+    rows, missing_background = plot_rows(
+        counts,
+        region_value,
+        background_summary,
+        transcript=transcript,
+    )
+    if missing_background and strict_background:
+        interval_text = "interval is" if missing_background == 1 else "intervals are"
+        raise ValueError(
+            f"{missing_background} selected {interval_text} missing usable background statistics"
+        )
     if not rows:
         raise ValueError("No intervals with background statistics overlap the selected region.")
 
@@ -124,15 +152,16 @@ def render_plot_svg(
 
 
 def write_plot(
-    read_counts: Path | dict[Interval, int],
-    background: Path | BackgroundSummary,
-    output: Path,
+    read_counts: str | Path | dict[Interval, int],
+    background: str | Path | BackgroundSummary,
+    output: str | Path,
     *,
     region: Interval | str | None = None,
     transcript_id: str | None = None,
-    transcript_index: Path | TranscriptIndex | None = None,
+    transcript_index: str | Path | TranscriptIndex | None = None,
     sample_name: str | None = None,
     highlight: Interval | str | None = None,
+    strict_background: bool = True,
 ) -> None:
     """Render and write a gcnvplot SVG."""
     svg = render_plot_svg(
@@ -143,6 +172,8 @@ def write_plot(
         transcript_index=transcript_index,
         sample_name=sample_name,
         highlight=highlight,
+        strict_background=strict_background,
     )
+    output = Path(output)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(svg, encoding="utf-8")

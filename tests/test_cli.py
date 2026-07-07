@@ -196,6 +196,42 @@ def test_build_background_writes_expected_summary(
     )
 
 
+def test_python_api_creates_and_writes_background(tmp_path: Path) -> None:
+    sample_a = tmp_path / "sample_a.tsv"
+    sample_b = tmp_path / "sample_b.tsv"
+    write_read_counts(
+        sample_a,
+        [
+            ("chr1", 100, 199, 10),
+            ("chr1", 200, 299, 20),
+        ],
+    )
+    write_read_counts(
+        sample_b,
+        [
+            ("chr1", 100, 199, 15),
+            ("chr1", 200, 299, 30),
+        ],
+    )
+
+    background = gcnvplot.create_background(
+        [sample_a, gcnvplot.parse_read_counts(sample_b)]
+    )
+
+    assert background.lower_percentile == 5
+    assert background.upper_percentile == 95
+    assert background.rows[("chr1", 100, 199)]["BASELINE_MEDIAN"] == "12.5"
+    assert background.rows[("chr1", 200, 299)]["BG_NORM_MEDIAN"] == "25"
+
+    output_path = tmp_path / "background.tsv"
+    assert gcnvplot.write_background([sample_a, sample_b], output_path) == 2
+
+    background_text = output_path.read_text(encoding="utf-8")
+    assert "# samples=2" in background_text
+    assert "chr1\t100\t199\t12.5\t2\t12.5\t12.5\t0\t12.5\t12.5" in background_text
+    assert "chr1\t200\t299\t25\t2\t25\t25\t0\t25\t25" in background_text
+
+
 def test_create_background_requires_output(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -728,6 +764,77 @@ def test_python_api_renders_with_reusable_transcript_index(
     assert "point point-open" in svg
     assert output_path.read_text(encoding="utf-8") == svg
     assert capsys.readouterr().out == ""
+
+
+def test_python_api_rejects_ambiguous_region_and_transcript(tmp_path: Path) -> None:
+    background = gcnvplot.BackgroundSummary(
+        rows={},
+        lower_percentile=5,
+        upper_percentile=95,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="region and transcript_id are mutually exclusive",
+    ):
+        gcnvplot.render_plot_svg(
+            {},
+            background,
+            region="chr1:100-199",
+            transcript_id="TX1",
+            transcript_index=tmp_path / "transcripts.sqlite",
+        )
+
+    with pytest.raises(ValueError, match="transcript_index can only be used"):
+        gcnvplot.render_plot_svg(
+            {},
+            background,
+            region="chr1:100-199",
+            transcript_index=tmp_path / "transcripts.sqlite",
+        )
+
+
+def test_python_api_rejects_missing_background_by_default(tmp_path: Path) -> None:
+    background_path = tmp_path / "background.tsv"
+    background_path.write_text(
+        "\n".join(
+            [
+                "# normalization=median-of-ratios",
+                "# baseline=median-positive-count",
+                "# samples=2",
+                "# lower_percentile=5",
+                "# upper_percentile=95",
+                "CONTIG\tSTART\tEND\tBASELINE_MEDIAN\tN\tBG_NORM_MEAN\tBG_NORM_MEDIAN\tBG_NORM_SD\tBG_NORM_P5\tBG_NORM_P95",
+                "chr1\t100\t199\t12.5\t2\t12.5\t12.5\t0\t12.5\t12.5",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    sample_path = tmp_path / "sample.tsv"
+    write_read_counts(
+        sample_path,
+        [
+            ("chr1", 100, 199, 10),
+            ("chr1", 200, 299, 20),
+        ],
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="1 selected interval is missing usable background statistics",
+    ):
+        gcnvplot.render_plot_svg(sample_path, background_path, region="chr1:100-299")
+
+    svg = gcnvplot.render_plot_svg(
+        sample_path,
+        background_path,
+        region="chr1:100-299",
+        strict_background=False,
+    )
+
+    assert "chr1:100-199" in svg
+    assert "chr1:200-299" not in svg
 
 
 def test_plot_transcript_uses_open_points_for_non_exonic_intervals(
