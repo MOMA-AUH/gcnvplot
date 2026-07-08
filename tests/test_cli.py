@@ -333,6 +333,28 @@ def test_create_background_requires_output(
     assert "the following arguments are required: --output" in capsys.readouterr().err
 
 
+def test_create_background_reports_missing_read_counts_list(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    missing_path = tmp_path / "missing_inputs.txt"
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main(
+            [
+                "create-background",
+                "--read-counts-list",
+                str(missing_path),
+                "--output",
+                str(tmp_path / "background.tsv"),
+            ]
+        )
+
+    error_text = capsys.readouterr().err
+    assert exc_info.value.code == 2
+    assert str(missing_path) in error_text
+    assert "Traceback" not in error_text
+
+
 def test_index_gtf_writes_sqlite_database(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -377,6 +399,28 @@ def test_index_gtf_writes_sqlite_database(
     )
 
 
+def test_index_gtf_reports_missing_gtf(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    missing_path = tmp_path / "missing.gtf"
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main(
+            [
+                "index-gtf",
+                "--gtf",
+                str(missing_path),
+                "--output",
+                str(tmp_path / "transcripts.sqlite"),
+            ]
+        )
+
+    error_text = capsys.readouterr().err
+    assert exc_info.value.code == 2
+    assert str(missing_path) in error_text
+    assert "Traceback" not in error_text
+
+
 def test_plot_requires_output(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     background_path = tmp_path / "background.tsv"
     background_path.write_text(
@@ -409,6 +453,69 @@ def test_plot_requires_output(tmp_path: Path, capsys: pytest.CaptureFixture[str]
 
     assert exc_info.value.code == 2
     assert "the following arguments are required: --output" in capsys.readouterr().err
+
+
+def test_plot_reports_missing_read_counts_and_background(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    background_path = tmp_path / "background.tsv"
+    background_path.write_text(
+        "\n".join(
+            [
+                "# normalization=median-of-ratios",
+                "# baseline=median-positive-count",
+                "# samples=2",
+                "# lower_percentile=5",
+                "# upper_percentile=95",
+                "CONTIG\tSTART\tEND\tBASELINE_MEDIAN\tN\tBG_NORM_MEAN\tBG_NORM_MEDIAN\tBG_NORM_SD\tBG_NORM_P5\tBG_NORM_P95",
+                "chr1\t100\t199\t12.5\t2\t12.5\t12.5\t0\t12.5\t12.5",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    sample_path = tmp_path / "sample.tsv"
+    write_read_counts(sample_path, [("chr1", 100, 199, 10)])
+
+    missing_read_counts = tmp_path / "missing_sample.tsv"
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main(
+            [
+                "plot",
+                "--read-counts",
+                str(missing_read_counts),
+                "--background",
+                str(background_path),
+                "--region",
+                "chr1:100-199",
+                "--output",
+                str(tmp_path / "plot.svg"),
+            ]
+        )
+    error_text = capsys.readouterr().err
+    assert exc_info.value.code == 2
+    assert str(missing_read_counts) in error_text
+    assert "Traceback" not in error_text
+
+    missing_background = tmp_path / "missing_background.tsv"
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main(
+            [
+                "plot",
+                "--read-counts",
+                str(sample_path),
+                "--background",
+                str(missing_background),
+                "--region",
+                "chr1:100-199",
+                "--output",
+                str(tmp_path / "plot.svg"),
+            ]
+        )
+    error_text = capsys.readouterr().err
+    assert exc_info.value.code == 2
+    assert str(missing_background) in error_text
+    assert "Traceback" not in error_text
 
 
 def test_plot_transcript_requires_transcript_db(
@@ -451,6 +558,86 @@ def test_plot_transcript_requires_transcript_db(
 
     assert exc_info.value.code == 2
     assert "--transcript-db is required when --transcript is used" in capsys.readouterr().err
+
+
+def test_transcript_index_rejects_missing_database_without_creating_file(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "missing.sqlite"
+
+    with pytest.raises(ValueError, match="transcript database not found"):
+        gcnvplot.TranscriptIndex(db_path)
+
+    assert not db_path.exists()
+
+
+def test_plot_transcript_reports_missing_or_invalid_transcript_db(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    background_path = tmp_path / "background.tsv"
+    background_path.write_text(
+        "\n".join(
+            [
+                "# normalization=median-of-ratios",
+                "# baseline=median-positive-count",
+                "# samples=2",
+                "# lower_percentile=5",
+                "# upper_percentile=95",
+                "CONTIG\tSTART\tEND\tBASELINE_MEDIAN\tN\tBG_NORM_MEAN\tBG_NORM_MEDIAN\tBG_NORM_SD\tBG_NORM_P5\tBG_NORM_P95",
+                "chr1\t100\t199\t12.5\t2\t12.5\t12.5\t0\t12.5\t12.5",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    sample_path = tmp_path / "sample.tsv"
+    write_read_counts(sample_path, [("chr1", 100, 199, 10)])
+    missing_db = tmp_path / "missing.sqlite"
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main(
+            [
+                "plot",
+                "--read-counts",
+                str(sample_path),
+                "--background",
+                str(background_path),
+                "--transcript",
+                "TX1",
+                "--transcript-db",
+                str(missing_db),
+                "--output",
+                str(tmp_path / "plot.svg"),
+            ]
+        )
+    error_text = capsys.readouterr().err
+    assert exc_info.value.code == 2
+    assert "transcript database not found" in error_text
+    assert "Traceback" not in error_text
+    assert not missing_db.exists()
+
+    invalid_db = tmp_path / "invalid.sqlite"
+    invalid_db.write_text("not a sqlite database", encoding="utf-8")
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main(
+            [
+                "plot",
+                "--read-counts",
+                str(sample_path),
+                "--background",
+                str(background_path),
+                "--transcript",
+                "TX1",
+                "--transcript-db",
+                str(invalid_db),
+                "--output",
+                str(tmp_path / "plot.svg"),
+            ]
+        )
+    error_text = capsys.readouterr().err
+    assert exc_info.value.code == 2
+    assert "invalid transcript database" in error_text
+    assert "Traceback" not in error_text
 
 
 def test_transcript_index_rejects_ambiguous_versionless_ids(

@@ -3,11 +3,19 @@
 from __future__ import annotations
 
 import argparse
+import sqlite3
 from pathlib import Path
 
 from . import __version__
 from .cli_handlers import build_background, index_transcripts, plot_sample
 from .utils import parse_region
+
+
+def _format_os_error(error: OSError) -> str:
+    filename = error.filename or error.filename2
+    if filename is not None and error.strerror:
+        return f"{filename}: {error.strerror}"
+    return str(error)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -126,6 +134,10 @@ def main(argv: list[str] | None = None) -> int:
     try:
         return handler(args)
     except ValueError as error:
+        parser.error(str(error))
+    except OSError as error:
+        parser.error(_format_os_error(error))
+    except sqlite3.Error as error:
         parser.error(str(error))
 
 

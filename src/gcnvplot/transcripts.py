@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 from pathlib import Path
+from urllib.parse import quote
 
 from .models import TranscriptAnnotation, TranscriptExon
 from .utils import open_text
@@ -234,12 +235,68 @@ class TranscriptIndex:
 
     def __init__(self, path: Path):
         self.path = Path(path)
-        self._connection = sqlite3.connect(self.path)
-        self._connection.row_factory = sqlite3.Row
+        if not self.path.exists():
+            raise ValueError(f"{self.path}: transcript database not found")
+        if not self.path.is_file():
+            raise ValueError(f"{self.path}: transcript database is not a file")
+
+        self._connection: sqlite3.Connection | None = None
+        try:
+            database_uri = f"file:{quote(str(self.path.resolve()), safe='/')}?mode=ro"
+            self._connection = sqlite3.connect(database_uri, uri=True)
+            self._connection.row_factory = sqlite3.Row
+            self._validate_schema()
+        except ValueError:
+            self.close()
+            raise
+        except sqlite3.Error as error:
+            self.close()
+            raise ValueError(f"{self.path}: invalid transcript database: {error}") from error
+
+    def _validate_schema(self) -> None:
+        assert self._connection is not None
+        required_columns = {
+            "metadata": {"key", "value"},
+            "transcripts": {
+                "transcript_id",
+                "transcript_id_root",
+                "gene_name",
+                "contig",
+                "strand",
+                "start",
+                "end",
+            },
+            "exons": {"transcript_id", "exon_number", "start", "end"},
+        }
+        rows = self._connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table'"
+        ).fetchall()
+        tables = {str(row["name"]) for row in rows}
+        missing = set(required_columns) - tables
+        if missing:
+            missing_text = ", ".join(sorted(missing))
+            raise ValueError(
+                f"{self.path}: invalid transcript database; "
+                f"missing table(s): {missing_text}"
+            )
+        for table, columns in required_columns.items():
+            column_rows = self._connection.execute(
+                f"PRAGMA table_info({table})"
+            ).fetchall()
+            existing_columns = {str(row["name"]) for row in column_rows}
+            missing_columns = columns - existing_columns
+            if missing_columns:
+                missing_text = ", ".join(sorted(missing_columns))
+                raise ValueError(
+                    f"{self.path}: invalid transcript database; "
+                    f"table {table} missing column(s): {missing_text}"
+                )
 
     def close(self) -> None:
         """Close the underlying SQLite connection."""
-        self._connection.close()
+        if self._connection is not None:
+            self._connection.close()
+            self._connection = None
 
     def __enter__(self) -> "TranscriptIndex":
         return self
@@ -249,6 +306,7 @@ class TranscriptIndex:
 
     def get(self, transcript_id: str) -> TranscriptAnnotation:
         """Return one transcript annotation by exact ID or unversioned ID when unambiguous."""
+        assert self._connection is not None
         transcript_row = self._connection.execute(
             """
             SELECT transcript_id, gene_name, contig, strand, start, end
