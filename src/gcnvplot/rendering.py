@@ -101,7 +101,6 @@ def _build_plot_svg(
         ".baseline { stroke: #5b6472; stroke-width: 2; stroke-dasharray: 6 5; }",
         ".highlight-band { fill: #f59e0b; opacity: 0.28; stroke: #b45309; stroke-width: 1.1; }",
         ".panel { fill: #ffffff; stroke: #d8dee4; stroke-width: 1.2; }",
-        ".panel-title { font-size: 14px; font-weight: 700; }",
         ".panel-label { font-size: 12px; font-weight: 700; }",
         ".panel-text { font-size: 12px; }",
         ".panel-label-emphasis { font-size: 13px; font-weight: 800; }",
@@ -110,6 +109,7 @@ def _build_plot_svg(
         "</style>",
         f'<rect width="{width}" height="{height}" fill="white"/>',
     ]
+    content_start_index = len(elements)
 
     if highlight_start is not None and highlight_end is not None:
         band_x = min(highlight_start, highlight_end)
@@ -359,13 +359,9 @@ def _build_plot_svg(
     panel_y = top - 8
     info_row_count = sum(len(section) for section in info_sections)
     separator_count = max(0, len(info_sections) - 1)
-    panel_h = max(132, 56 + info_row_count * 20 + separator_count * 14 + 72)
-    elements[3:3] = [
-        f'<rect class="panel" x="{panel_x}" y="{panel_y}" width="{panel_width}" height="{panel_h}"/>',
-        f'<text class="panel-title" x="{panel_x + 16}" y="{panel_y + 24}">Plot Info</text>',
-    ]
+    panel_h = max(132, 32 + info_row_count * 20 + separator_count * 14 + 72)
 
-    info_y = panel_y + 49
+    info_y = panel_y + 25
     for section_index, section in enumerate(info_sections):
         for label, value in section:
             label_class = "panel-label-emphasis" if label == "Sample" else "panel-label"
@@ -385,7 +381,10 @@ def _build_plot_svg(
     legend_bottom_padding = 68 if transcript is not None else 24
     legend_y = max(info_y + 18, panel_y + panel_h - legend_bottom_padding)
     panel_h = max(panel_h, legend_y + legend_bottom_padding - panel_y)
-    elements[3] = f'<rect class="panel" x="{panel_x}" y="{panel_y}" width="{panel_width}" height="{panel_h}"/>'
+    panel_elements = [
+        f'<rect class="panel" x="{panel_x}" y="{panel_y}" width="{panel_width}" height="{panel_h}"/>',
+    ]
+    elements[content_start_index:content_start_index] = panel_elements
     elements.extend(
         [
             f'<circle class="point point-filled" cx="{panel_x + 24}" cy="{legend_y}" r="5"/>',

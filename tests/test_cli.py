@@ -132,6 +132,13 @@ def svg_point_class_by_interval(svg: str) -> dict[str, str]:
     return classes
 
 
+def assert_svg_panel_is_outside_style(svg: str) -> None:
+    """Assert that info-panel markup is emitted after the style block."""
+    style_end = svg.index("</style>")
+    panel_rect = svg.index('<rect class="panel"')
+    assert style_end < panel_rect
+
+
 def test_main_version(capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit) as exc_info:
         cli.main(["--version"])
@@ -780,13 +787,13 @@ def test_plot_log2_ratio_writes_svg_with_zero_centered_axis(
     assert "SIGNAL=-0.584386" in svg
     assert "SIGNAL=0.41489328" in svg
     assert 'class="panel"' in svg
-    assert "Plot Info" in svg
     assert "Region" in svg
     assert "Sample interval" in svg
     assert "Overlaps exon" not in svg
     assert "Outside exon" not in svg
     assert "Uncovered exon" not in svg
     assert "background band" not in svg
+    assert_svg_panel_is_outside_style(svg)
     highlight_bands = svg_highlight_bands(svg)
     assert len(highlight_bands) == 1
 
@@ -937,7 +944,6 @@ def test_plot_transcript_writes_exon_track_and_gene_name(
     assert "rotate(-35" not in svg
     assert svg_x_axis_ticks(svg)
     assert 'class="panel"' in svg
-    assert "Plot Info" in svg
     assert "Sample" in svg
     assert "Gene" in svg
     assert "Transcript" in svg
@@ -948,6 +954,7 @@ def test_plot_transcript_writes_exon_track_and_gene_name(
     assert "Overlaps exon" in svg
     assert "Outside exon" in svg
     assert ">2</text>" in svg
+    assert_svg_panel_is_outside_style(svg)
     assert svg.count('class="panel-separator"') == 2
     assert svg.index("Sample") < svg.index("Gene") < svg.index("Transcript") < svg.index("Region") < svg.index("Highlight") < svg.index("Exons")
     highlight_bands = svg_highlight_bands(svg)
