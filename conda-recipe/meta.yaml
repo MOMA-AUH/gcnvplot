@@ -27,6 +27,9 @@ test:
     - gcnvplot
   commands:
     - gcnvplot --help
+    - gcnvplot create-background --help
+    - gcnvplot index-gtf --help
+    - gcnvplot plot --help
 
 about:
   home: https://github.com/MOMA-AUH/gcnvplot
