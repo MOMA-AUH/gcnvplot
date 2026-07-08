@@ -40,6 +40,14 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
         help="Output TSV path for the background cohort summary.",
     )
+    build.add_argument(
+        "--allow-interval-mismatches",
+        action="store_true",
+        help=(
+            "Allow background samples with different interval sets. "
+            "By default, all background samples must contain the same intervals."
+        ),
+    )
     build.set_defaults(handler=build_background)
 
     index = subparsers.add_parser(
@@ -89,6 +97,14 @@ def build_parser() -> argparse.ArgumentParser:
     plot.add_argument(
         "--sample-name",
         help="Optional sample label to show in the plot info panel.",
+    )
+    plot.add_argument(
+        "--allow-interval-mismatches",
+        action="store_true",
+        help=(
+            "Allow selected sample/background interval-set mismatches. "
+            "By default, selected sample and background intervals must match exactly."
+        ),
     )
     plot.add_argument("--output", type=Path, required=True, help="SVG output path.")
     plot.set_defaults(handler=plot_sample)

@@ -232,6 +232,94 @@ def test_python_api_creates_and_writes_background(tmp_path: Path) -> None:
     assert "chr1\t200\t299\t25\t2\t25\t25\t0\t25\t25" in background_text
 
 
+def test_create_background_rejects_mismatched_interval_sets_by_default(
+    tmp_path: Path,
+) -> None:
+    sample_a = tmp_path / "sample_a.tsv"
+    sample_b = tmp_path / "sample_b.tsv"
+    write_read_counts(
+        sample_a,
+        [
+            ("chr1", 100, 199, 10),
+            ("chr1", 200, 299, 20),
+        ],
+    )
+    write_read_counts(
+        sample_b,
+        [
+            ("chr1", 100, 199, 15),
+            ("chr1", 300, 399, 30),
+        ],
+    )
+
+    with pytest.raises(ValueError, match="Read-count interval sets do not match"):
+        gcnvplot.create_background([sample_a, sample_b])
+
+    background = gcnvplot.create_background(
+        [sample_a, sample_b],
+        strict_intervals=False,
+    )
+    assert set(background.rows) == {
+        ("chr1", 100, 199),
+        ("chr1", 200, 299),
+        ("chr1", 300, 399),
+    }
+
+
+def test_create_background_cli_allows_interval_mismatches_when_requested(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    sample_a = tmp_path / "sample_a.tsv"
+    sample_b = tmp_path / "sample_b.tsv"
+    write_read_counts(
+        sample_a,
+        [
+            ("chr1", 100, 199, 10),
+            ("chr1", 200, 299, 20),
+        ],
+    )
+    write_read_counts(
+        sample_b,
+        [
+            ("chr1", 100, 199, 15),
+            ("chr1", 300, 399, 30),
+        ],
+    )
+    paths_file = tmp_path / "background_inputs.txt"
+    paths_file.write_text("sample_a.tsv\nsample_b.tsv\n", encoding="utf-8")
+    output_path = tmp_path / "background.tsv"
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main(
+            [
+                "create-background",
+                "--read-counts-list",
+                str(paths_file),
+                "--output",
+                str(output_path),
+            ]
+        )
+    assert exc_info.value.code == 2
+    assert "Read-count interval sets do not match" in capsys.readouterr().err
+
+    assert (
+        cli.main(
+            [
+                "create-background",
+                "--read-counts-list",
+                str(paths_file),
+                "--allow-interval-mismatches",
+                "--output",
+                str(output_path),
+            ]
+        )
+        == 0
+    )
+
+    assert "Warning: interval-set validation is disabled" in capsys.readouterr().err
+    assert "chr1\t300\t399" in output_path.read_text(encoding="utf-8")
+
+
 def test_create_background_requires_output(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -521,6 +609,73 @@ def test_plot_log2_ratio_writes_svg_with_zero_centered_axis(
     )
 
 
+def test_plot_rejects_interval_mismatches_by_default(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    background_path = tmp_path / "background.tsv"
+    background_path.write_text(
+        "\n".join(
+            [
+                "# normalization=median-of-ratios",
+                "# baseline=median-positive-count",
+                "# samples=2",
+                "# lower_percentile=5",
+                "# upper_percentile=95",
+                "CONTIG\tSTART\tEND\tBASELINE_MEDIAN\tN\tBG_NORM_MEAN\tBG_NORM_MEDIAN\tBG_NORM_SD\tBG_NORM_P5\tBG_NORM_P95",
+                "chr1\t100\t199\t12.5\t2\t12.5\t12.5\t0\t12.5\t12.5",
+                "chr1\t200\t299\t25\t2\t25\t25\t0\t25\t25",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    sample_path = tmp_path / "sample.tsv"
+    write_read_counts(sample_path, [("chr1", 100, 199, 10)])
+    output_path = tmp_path / "plot.svg"
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main(
+            [
+                "plot",
+                "--read-counts",
+                str(sample_path),
+                "--background",
+                str(background_path),
+                "--region",
+                "chr1:100-299",
+                "--output",
+                str(output_path),
+            ]
+        )
+    assert exc_info.value.code == 2
+    assert "1 background interval(s) missing from the sample" in capsys.readouterr().err
+
+    assert (
+        cli.main(
+            [
+                "plot",
+                "--read-counts",
+                str(sample_path),
+                "--background",
+                str(background_path),
+                "--region",
+                "chr1:100-299",
+                "--allow-interval-mismatches",
+                "--output",
+                str(output_path),
+            ]
+        )
+        == 0
+    )
+    captured = capsys.readouterr()
+    assert "Warning: Interval sets do not match" in captured.err
+    assert captured.out == (
+        "Plotted intervals: 1\n"
+        f"Wrote: {output_path}\n"
+    )
+    assert "chr1:100-199" in output_path.read_text(encoding="utf-8")
+
+
 def test_plot_transcript_writes_exon_track_and_gene_name(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -794,7 +949,9 @@ def test_python_api_rejects_ambiguous_region_and_transcript(tmp_path: Path) -> N
         )
 
 
-def test_python_api_rejects_missing_background_by_default(tmp_path: Path) -> None:
+def test_python_api_rejects_sample_intervals_missing_from_background(
+    tmp_path: Path,
+) -> None:
     background_path = tmp_path / "background.tsv"
     background_path.write_text(
         "\n".join(
@@ -822,6 +979,50 @@ def test_python_api_rejects_missing_background_by_default(tmp_path: Path) -> Non
 
     with pytest.raises(
         ValueError,
+        match="1 sample interval\\(s\\) missing from the background",
+    ):
+        gcnvplot.render_plot_svg(sample_path, background_path, region="chr1:100-299")
+
+    svg = gcnvplot.render_plot_svg(
+        sample_path,
+        background_path,
+        region="chr1:100-299",
+        strict_intervals=False,
+    )
+
+    assert "chr1:100-199" in svg
+    assert "chr1:200-299" not in svg
+
+
+def test_python_api_rejects_unusable_background_by_default(tmp_path: Path) -> None:
+    background_path = tmp_path / "background.tsv"
+    background_path.write_text(
+        "\n".join(
+            [
+                "# normalization=median-of-ratios",
+                "# baseline=median-positive-count",
+                "# samples=2",
+                "# lower_percentile=5",
+                "# upper_percentile=95",
+                "CONTIG\tSTART\tEND\tBASELINE_MEDIAN\tN\tBG_NORM_MEAN\tBG_NORM_MEDIAN\tBG_NORM_SD\tBG_NORM_P5\tBG_NORM_P95",
+                "chr1\t100\t199\t12.5\t2\t12.5\t12.5\t0\t12.5\t12.5",
+                "chr1\t200\t299\t0\t2\t25\t25\t0\t25\t25",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    sample_path = tmp_path / "sample.tsv"
+    write_read_counts(
+        sample_path,
+        [
+            ("chr1", 100, 199, 10),
+            ("chr1", 200, 299, 20),
+        ],
+    )
+
+    with pytest.raises(
+        ValueError,
         match="1 selected interval is missing usable background statistics",
     ):
         gcnvplot.render_plot_svg(sample_path, background_path, region="chr1:100-299")
@@ -830,9 +1031,47 @@ def test_python_api_rejects_missing_background_by_default(tmp_path: Path) -> Non
         sample_path,
         background_path,
         region="chr1:100-299",
-        strict_background=False,
+        strict_intervals=False,
     )
+    assert "chr1:100-199" in svg
+    assert "chr1:200-299" not in svg
 
+
+def test_python_api_rejects_background_intervals_missing_from_sample(
+    tmp_path: Path,
+) -> None:
+    background_path = tmp_path / "background.tsv"
+    background_path.write_text(
+        "\n".join(
+            [
+                "# normalization=median-of-ratios",
+                "# baseline=median-positive-count",
+                "# samples=2",
+                "# lower_percentile=5",
+                "# upper_percentile=95",
+                "CONTIG\tSTART\tEND\tBASELINE_MEDIAN\tN\tBG_NORM_MEAN\tBG_NORM_MEDIAN\tBG_NORM_SD\tBG_NORM_P5\tBG_NORM_P95",
+                "chr1\t100\t199\t12.5\t2\t12.5\t12.5\t0\t12.5\t12.5",
+                "chr1\t200\t299\t25\t2\t25\t25\t0\t25\t25",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    sample_path = tmp_path / "sample.tsv"
+    write_read_counts(sample_path, [("chr1", 100, 199, 10)])
+
+    with pytest.raises(
+        ValueError,
+        match="1 background interval\\(s\\) missing from the sample",
+    ):
+        gcnvplot.render_plot_svg(sample_path, background_path, region="chr1:100-299")
+
+    svg = gcnvplot.render_plot_svg(
+        sample_path,
+        background_path,
+        region="chr1:100-299",
+        strict_intervals=False,
+    )
     assert "chr1:100-199" in svg
     assert "chr1:200-299" not in svg
 

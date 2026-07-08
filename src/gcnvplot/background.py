@@ -28,6 +28,16 @@ BACKGROUND_FIELDS = [
 ReadCountsInput = str | Path | dict[Interval, int]
 
 
+def _format_interval(interval: Interval) -> str:
+    contig, start, end = interval
+    return f"{contig}:{start}-{end}"
+
+
+def _format_interval_examples(intervals: set[Interval], limit: int = 3) -> str:
+    examples = sorted(intervals, key=lambda item: (item[0], item[1], item[2]))[:limit]
+    return ", ".join(_format_interval(interval) for interval in examples)
+
+
 def parse_background(path: Path) -> BackgroundSummary:
     """Parse a background TSV created by create-background."""
     lower_percentile: int | None = None
@@ -76,6 +86,38 @@ def _coerce_read_counts_inputs(
     return sample_counts
 
 
+def validate_matching_interval_sets(sample_counts: list[dict[Interval, int]]) -> None:
+    """Raise if read-count samples do not share the same interval set."""
+    if len(sample_counts) < 2:
+        return
+
+    expected = set(sample_counts[0])
+    for sample_index, counts in enumerate(sample_counts[1:], start=2):
+        current = set(counts)
+        missing = expected - current
+        extra = current - expected
+        if not missing and not extra:
+            continue
+
+        details = []
+        if missing:
+            details.append(
+                f"missing {len(missing)} interval(s) from sample 1"
+                f" ({_format_interval_examples(missing)})"
+            )
+        if extra:
+            details.append(
+                f"has {len(extra)} interval(s) not present in sample 1"
+                f" ({_format_interval_examples(extra)})"
+            )
+        raise ValueError(
+            "Read-count interval sets do not match: "
+            f"sample {sample_index} {'; '.join(details)}. "
+            "Use strict_intervals=False or --allow-interval-mismatches only "
+            "if partial interval overlap is intentional."
+        )
+
+
 def interval_baselines(sample_counts: list[dict[Interval, int]]) -> dict[Interval, float]:
     """Estimate a robust baseline for each interval from background samples."""
     interval_values: dict[Interval, list[float]] = defaultdict(list)
@@ -117,16 +159,23 @@ def log2_ratio(sample_value: float, expected_value: float, pseudocount: float) -
     return math.log2((sample_value + pseudocount) / (expected_value + pseudocount))
 
 
-def create_background(read_counts: Iterable[ReadCountsInput]) -> BackgroundSummary:
+def create_background(
+    read_counts: Iterable[ReadCountsInput],
+    *,
+    strict_intervals: bool = True,
+) -> BackgroundSummary:
     """Create an interval-wise background summary from read-count samples.
 
     Samples can be read-count TSV paths or already parsed read-count dictionaries.
-    The returned summary can be passed directly to ``render_plot_svg`` or written
-    with ``write_background``.
+    By default, all samples must use the same interval set. The returned summary
+    can be passed directly to ``render_plot_svg`` or written with
+    ``write_background``.
     """
     sample_counts = _coerce_read_counts_inputs(read_counts)
     if not sample_counts:
         raise ValueError("At least one read-count sample is required")
+    if strict_intervals:
+        validate_matching_interval_sets(sample_counts)
 
     baselines = interval_baselines(sample_counts)
 
@@ -162,13 +211,21 @@ def create_background(read_counts: Iterable[ReadCountsInput]) -> BackgroundSumma
     return BackgroundSummary(rows=rows, lower_percentile=5, upper_percentile=95)
 
 
-def write_background(read_counts: Iterable[ReadCountsInput], output: str | Path) -> int:
+def write_background(
+    read_counts: Iterable[ReadCountsInput],
+    output: str | Path,
+    *,
+    strict_intervals: bool = True,
+) -> int:
     """Create and write interval-wise background summaries.
 
     Returns the number of intervals written.
     """
     read_counts_list = list(read_counts)
-    background_summary = create_background(read_counts_list)
+    background_summary = create_background(
+        read_counts_list,
+        strict_intervals=strict_intervals,
+    )
     output = Path(output)
 
     output.parent.mkdir(parents=True, exist_ok=True)

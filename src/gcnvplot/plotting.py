@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from pathlib import Path
 
 from .background import load_background, log2_ratio, normalized_counts
@@ -80,6 +81,55 @@ def _coerce_highlight(value: Interval | str | None) -> Interval | None:
     return _coerce_region(value)
 
 
+def _selected_intervals(intervals: Iterable[Interval], region: Interval) -> set[Interval]:
+    return {
+        interval
+        for interval in intervals
+        if interval[0] == region[0]
+        and overlaps(interval[1], interval[2], region[1], region[2])
+    }
+
+
+def _format_interval(interval: Interval) -> str:
+    contig, start, end = interval
+    return f"{contig}:{start}-{end}"
+
+
+def _format_interval_examples(intervals: set[Interval], limit: int = 3) -> str:
+    examples = sorted(intervals, key=lambda item: (item[0], item[1], item[2]))[:limit]
+    return ", ".join(_format_interval(interval) for interval in examples)
+
+
+def interval_set_mismatches_for_region(
+    counts: dict[Interval, int],
+    region: Interval,
+    background_summary: BackgroundSummary,
+) -> tuple[set[Interval], set[Interval]]:
+    """Return selected sample-only and background-only intervals."""
+    sample_intervals = _selected_intervals(counts, region)
+    background_intervals = _selected_intervals(background_summary.rows, region)
+    return sample_intervals - background_intervals, background_intervals - sample_intervals
+
+
+def format_interval_set_mismatch(
+    sample_only: set[Interval],
+    background_only: set[Interval],
+) -> str:
+    """Return a concise message for selected interval-set mismatches."""
+    details = []
+    if sample_only:
+        details.append(
+            f"{len(sample_only)} sample interval(s) missing from the background"
+            f" ({_format_interval_examples(sample_only)})"
+        )
+    if background_only:
+        details.append(
+            f"{len(background_only)} background interval(s) missing from the sample"
+            f" ({_format_interval_examples(background_only)})"
+        )
+    return "Interval sets do not match for the selected region: " + "; ".join(details)
+
+
 def render_plot_svg(
     read_counts: str | Path | dict[Interval, int],
     background: str | Path | BackgroundSummary,
@@ -89,12 +139,13 @@ def render_plot_svg(
     transcript_index: str | Path | TranscriptIndex | None = None,
     sample_name: str | None = None,
     highlight: Interval | str | None = None,
-    strict_background: bool = True,
+    strict_intervals: bool = True,
 ) -> str:
     """Render a gcnvplot SVG for use in Python code or reports.
 
     Provide exactly one of ``region`` or ``transcript_id``. When
-    ``strict_background`` is true, selected intervals without usable background
+    ``strict_intervals`` is true, the selected sample/background interval sets
+    must match exactly and selected intervals without usable background
     statistics raise ``ValueError`` instead of being silently skipped.
     """
     if region is not None and transcript_id is not None:
@@ -128,13 +179,21 @@ def render_plot_svg(
         if isinstance(read_counts, dict)
         else parse_read_counts(Path(read_counts))
     )
+    sample_only, background_only = interval_set_mismatches_for_region(
+        counts,
+        region_value,
+        background_summary,
+    )
+    if strict_intervals and (sample_only or background_only):
+        raise ValueError(format_interval_set_mismatch(sample_only, background_only))
+
     rows, missing_background = plot_rows(
         counts,
         region_value,
         background_summary,
         transcript=transcript,
     )
-    if missing_background and strict_background:
+    if missing_background and strict_intervals:
         interval_text = "interval is" if missing_background == 1 else "intervals are"
         raise ValueError(
             f"{missing_background} selected {interval_text} missing usable background statistics"
@@ -161,7 +220,7 @@ def write_plot(
     transcript_index: str | Path | TranscriptIndex | None = None,
     sample_name: str | None = None,
     highlight: Interval | str | None = None,
-    strict_background: bool = True,
+    strict_intervals: bool = True,
 ) -> None:
     """Render and write a gcnvplot SVG."""
     svg = render_plot_svg(
@@ -172,7 +231,7 @@ def write_plot(
         transcript_index=transcript_index,
         sample_name=sample_name,
         highlight=highlight,
-        strict_background=strict_background,
+        strict_intervals=strict_intervals,
     )
     output = Path(output)
     output.parent.mkdir(parents=True, exist_ok=True)

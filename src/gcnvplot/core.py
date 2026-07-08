@@ -19,7 +19,15 @@ from .background import (
 )
 from .cli_handlers import build_background, index_transcripts, plot_sample, rows_for_plot
 from .models import BackgroundSummary, Interval, TranscriptAnnotation, TranscriptExon
-from .plotting import _coerce_highlight, _coerce_region, plot_rows, render_plot_svg, write_plot
+from .plotting import (
+    _coerce_highlight,
+    _coerce_region,
+    format_interval_set_mismatch,
+    interval_set_mismatches_for_region,
+    plot_rows,
+    render_plot_svg,
+    write_plot,
+)
 from .read_counts import READ_COUNT_FIELDS, parse_read_counts, read_path_list
 from .rendering import _build_plot_svg, nice_ticks, write_svg_plot
 from .transcripts import (
@@ -48,10 +56,12 @@ __all__ = [
     "_resolve_transcript_annotation",
     "build_background",
     "create_background",
+    "format_interval_set_mismatch",
     "fmt",
     "index_gtf",
     "index_transcripts",
     "interval_baselines",
+    "interval_set_mismatches_for_region",
     "load_background",
     "load_transcript_annotation",
     "load_transcript_annotation_from_db",
