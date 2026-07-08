@@ -1,6 +1,6 @@
 # gcnvplot
 
-[![Anaconda-Server Badge](https://anaconda.org/MOMA-AUH/gcnvplot/badges/version.svg)](https://anaconda.org/MOMA-AUH/gcnvplot) [![Anaconda-Server Badge](https://anaconda.org/MOMA-AUH/gcnvplot/badges/downloads.svg)](https://anaconda.org/MOMA-AUH/gcnvplot)
+![Conda Version](https://img.shields.io/conda/vn/MOMA-AUH/gcnvplot?cacheSeconds=300) [![Conda Downloads](https://img.shields.io/conda/dn/MOMA-AUH/gcnvplot?cacheSeconds=300)](https://anaconda.org/MOMA-AUH/gcnvplot)
 
 Tool for plotting GATK germline CNV read-count signals against a background cohort
 
