@@ -2,7 +2,7 @@
 
 [![Conda Version](https://img.shields.io/conda/vn/MOMA-AUH/gcnvplot?cacheSeconds=300)](https://anaconda.org/MOMA-AUH/gcnvplot) [![Conda Downloads](https://img.shields.io/conda/dn/MOMA-AUH/gcnvplot?cacheSeconds=300)](https://anaconda.org/MOMA-AUH/gcnvplot)
 
-Tool for plotting GATK germline CNV read-count signals against a background cohort
+Tool for plotting GATK GermlineCNVCaller read-count signals against a background cohort
 
 ## Installation
 
