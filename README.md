@@ -122,25 +122,25 @@ with gcnvplot.TranscriptIndex(Path("annotations.sqlite")) as transcript_index:
 
 ## Synthetic example
 
-A tiny synthetic BRCA1 transcript example is available in [`examples/brca1_synthetic`](examples/brca1_synthetic). It demonstrates a highlighted multi-exon deletion, filled and open sample dots, and an uncovered-exon marker.
+A tiny synthetic BRCA1 transcript example is available in [`example`](example). It demonstrates a highlighted multi-exon deletion, filled and open sample dots, and an uncovered-exon marker.
 
-![Synthetic BRCA1 transcript plot](examples/brca1_synthetic/brca1_synthetic.svg)
+![Synthetic BRCA1 transcript plot](example/brca1_synthetic.svg)
 
 You can render it directly from the repository root:
 
 ```bash
 gcnvplot index-gtf \
-  --gtf examples/brca1_synthetic/brca1_mane_minimal.gtf \
-  --output examples/brca1_synthetic/brca1_mane_minimal.sqlite
+  --gtf example/brca1_mane_minimal.gtf \
+  --output example/brca1_mane_minimal.sqlite
 
 gcnvplot plot \
-  --read-counts examples/brca1_synthetic/sample_deletion.tsv \
-  --background examples/brca1_synthetic/background.tsv \
+  --read-counts example/sample_deletion.tsv \
+  --background example/background.tsv \
   --transcript NM_007294.4 \
-  --transcript-db examples/brca1_synthetic/brca1_mane_minimal.sqlite \
+  --transcript-db example/brca1_mane_minimal.sqlite \
   --sample-name "Synthetic BRCA1 exon 13-15 deletion" \
   --highlight chr17:43070928-43076614 \
-  --output examples/brca1_synthetic/brca1_synthetic.svg
+  --output example/brca1_synthetic.svg
 ```
 
 This example is designed to show:

@@ -1035,7 +1035,7 @@ def test_plot_transcript_constrains_long_sample_name(
 def test_brca1_synthetic_example_renders(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    example_dir = Path(__file__).parents[1] / "examples" / "brca1_synthetic"
+    example_dir = Path(__file__).parents[1] / "example"
     output_path = tmp_path / "brca1_synthetic.svg"
     db_path = tmp_path / "brca1.sqlite"
     build_transcript_db(example_dir / "brca1_mane_minimal.gtf", db_path)
@@ -1082,7 +1082,7 @@ def test_brca1_synthetic_example_renders(
 def test_python_api_renders_with_reusable_transcript_index(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    example_dir = Path(__file__).parents[1] / "examples" / "brca1_synthetic"
+    example_dir = Path(__file__).parents[1] / "example"
     db_path = tmp_path / "brca1.sqlite"
     build_transcript_db(example_dir / "brca1_mane_minimal.gtf", db_path)
     capsys.readouterr()
