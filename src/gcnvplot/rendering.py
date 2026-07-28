@@ -390,15 +390,13 @@ def _build_plot_svg(
             if overlay.kind in {"deletion", "duplication"}
         )
         if detail_intervals:
-            detail_section.append(
-                (
-                    "Highlight",
-                    ", ".join(
-                        f"{contig}:{start:,}-{end:,}"
-                        for contig, start, end in detail_intervals
-                    ),
+            for index, (contig, start, end) in enumerate(detail_intervals):
+                detail_section.append(
+                    (
+                        "Highlight" if index == 0 else "",
+                        f"{contig}:{start:,}-{end:,}",
+                    )
                 )
-            )
     if transcript is not None:
         for detail_contig, detail_start, detail_end in detail_intervals:
             if detail_contig != region[0]:

@@ -297,6 +297,35 @@ def test_cli_builds_self_contained_report_with_native_cnv_overlay(
     )
 
 
+def test_report_places_multiple_cnv_highlights_on_separate_rows(
+    tmp_path: Path,
+) -> None:
+    counts, background, _gtf, transcript_db = _write_inputs(tmp_path)
+    genes = tmp_path / "genes.tsv"
+    _write_genes(genes)
+    segments = tmp_path / "segments.vcf"
+    _write_segments(segments)
+    with segments.open("a", encoding="utf-8") as handle:
+        handle.write(
+            "chr1\t225\tcall2\tN\t<DUP>\t100\tPASS\tEND=240\tGT:CN\t1/1:3\n"
+        )
+    output = tmp_path / "report.html"
+
+    gcnvplot.build_report(
+        counts,
+        background,
+        genes,
+        transcript_db,
+        output,
+        segments_vcf_path=segments,
+    )
+
+    page = output.read_text(encoding="utf-8")
+    assert '>chr1:120-220</text>' in page
+    assert '>chr1:225-240</text>' in page
+    assert page.index('>chr1:120-220</text>') < page.index('>chr1:225-240</text>')
+
+
 def test_report_failure_does_not_replace_existing_output(tmp_path: Path) -> None:
     counts, background, _gtf, transcript_db = _write_inputs(tmp_path)
     genes = tmp_path / "genes.tsv"
