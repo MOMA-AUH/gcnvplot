@@ -7,7 +7,7 @@ import sqlite3
 from pathlib import Path
 
 from . import __version__
-from .cli_handlers import build_background, index_transcripts, plot_sample
+from .cli_handlers import build_background, build_html_report, index_transcripts, plot_sample
 from .utils import parse_region
 
 
@@ -22,7 +22,7 @@ def build_parser() -> argparse.ArgumentParser:
     """Build and return the top-level argument parser."""
     parser = argparse.ArgumentParser(
         prog="gcnvplot",
-        description="Plot GATK germline CNV read-count signals against a background cohort.",
+        description="Plot GATK germline CNV read-count signals and build gene reports.",
     )
     parser.add_argument(
         "--version",
@@ -116,6 +116,49 @@ def build_parser() -> argparse.ArgumentParser:
     )
     plot.add_argument("--output", type=Path, required=True, help="SVG output path.")
     plot.set_defaults(handler=plot_sample)
+
+    report = subparsers.add_parser(
+        "report",
+        help="Build a searchable, self-contained HTML gene report.",
+    )
+    report.add_argument("--read-counts", type=Path, required=True, help="Sample read-count TSV or TSV.GZ.")
+    report.add_argument("--background", type=Path, required=True, help="Background TSV from create-background.")
+    report.add_argument(
+        "--genes",
+        type=Path,
+        required=True,
+        help="TSV with gene_name, stable_id, and optional transcript columns.",
+    )
+    report.add_argument(
+        "--transcript-db",
+        type=Path,
+        required=True,
+        help="Transcript database from index-gtf.",
+    )
+    report.add_argument(
+        "--sample-name",
+        help=(
+            "Sample label displayed in the report and sample selector for a "
+            "multi-sample segments VCF."
+        ),
+    )
+    report.add_argument(
+        "--segments-vcf",
+        type=Path,
+        help="Optional GATK genotyped segments VCF or VCF.GZ.",
+    )
+    report.add_argument(
+        "--include-filtered-segments",
+        action="store_true",
+        help="Include segment records whose FILTER is neither PASS nor '.'.",
+    )
+    report.add_argument(
+        "--allow-interval-mismatches",
+        action="store_true",
+        help="Permit partial sample/background interval overlap.",
+    )
+    report.add_argument("--output", type=Path, required=True, help="HTML output path.")
+    report.set_defaults(handler=build_html_report)
     return parser
 
 
@@ -123,10 +166,11 @@ def main(argv: list[str] | None = None) -> int:
     """Run the CLI."""
     parser = build_parser()
     args = parser.parse_args(argv)
-    if getattr(args, "transcript", None) is not None and getattr(args, "transcript_db", None) is None:
-        parser.error("--transcript-db is required when --transcript is used")
-    if getattr(args, "transcript", None) is None and getattr(args, "transcript_db", None) is not None:
-        parser.error("--transcript-db can only be used with --transcript")
+    if args.command == "plot":
+        if args.transcript is not None and args.transcript_db is None:
+            parser.error("--transcript-db is required when --transcript is used")
+        if args.transcript is None and args.transcript_db is not None:
+            parser.error("--transcript-db can only be used with --transcript")
     handler = getattr(args, "handler", None)
     if handler is None:
         parser.print_help()

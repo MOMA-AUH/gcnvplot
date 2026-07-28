@@ -2,7 +2,8 @@
 
 [![Conda Version](https://img.shields.io/conda/vn/MOMA-AUH/gcnvplot?cacheSeconds=300)](https://anaconda.org/MOMA-AUH/gcnvplot) [![Conda Downloads](https://img.shields.io/conda/dn/MOMA-AUH/gcnvplot?cacheSeconds=300)](https://anaconda.org/MOMA-AUH/gcnvplot)
 
-Tool for plotting GATK GermlineCNVCaller read-count signals against a background cohort
+Tools for plotting GATK GermlineCNVCaller read-count signals and building
+self-contained gene reports.
 
 ## Installation
 
@@ -27,7 +28,7 @@ For `create-background`, provide a text file with one sample read-count path per
 
 For `plot`, provide one sample read-count file, one background TSV produced by `create-background`, and a genomic region such as `chr1:100-299`. This command writes an SVG plot showing the sample log2 signal relative to the background cohort. By default, the selected sample and background intervals must match exactly, and selected sample intervals must have usable background statistics. Use `--allow-interval-mismatches` only when that overlap is intentionally partial.
 
-If you want to plot by transcript, first build a SQLite transcript database once with `index-gtf`, then use `--transcript <TRANSCRIPT_ID>` together with `--transcript-db <annotations.sqlite>`. This adds an exon track beneath the signal plot. If you want a custom label in the right-side info panel, pass `--sample-name <LABEL>`.
+If you want to plot by transcript, first build a SQLite transcript database once with `index-gtf`, then use `--transcript <TRANSCRIPT_ID>` together with `--transcript-db <annotations.sqlite>`. The index retains transcript coordinates, gene identifiers from `gene_id` and database cross-references, and MANE Select tags when present. Transcript identifiers are not restricted to one annotation provider. Standard RefSeq chromosome accessions such as `NC_000001.11` are matched automatically to common read-count names such as `chr1` or `1`. This adds an exon track beneath the signal plot. If you want a custom label in the right-side info panel, pass `--sample-name <LABEL>`.
 
 The plot info panel shows `Sample` when provided, then `Gene`, `Transcript`, and `Region`, followed by a separated `Highlight` and `Exons` section when applicable.
 
@@ -50,6 +51,48 @@ gcnvplot plot \
   --sample-name SAMPLE_01 \
   --output plot.svg
 ```
+
+## HTML gene reports
+
+`gcnvplot report` builds one searchable, self-contained HTML file containing
+plots for a predefined gene set. The report has no external assets and can be
+opened locally without a web server or network connection.
+
+The gene list is tab-separated. `gene_name` and `stable_id` are required and
+are cross-checked against the indexed annotation. `transcript` is optional:
+
+```text
+gene_name	stable_id	transcript
+BRCA1	HGNC:1100
+BRCA2	HGNC:1101	NM_000059.4
+MYGENE	ENSEMBL_GENE_ID	CUSTOM_TRANSCRIPT
+```
+
+A blank transcript selects the gene's unique MANE Select transcript. An
+explicit transcript may use any identifier present in the GTF and may be
+versioned or unversioned.
+
+```bash
+gcnvplot report \
+  --read-counts sample.tsv \
+  --background background.tsv \
+  --genes genes.tsv \
+  --transcript-db annotations.sqlite \
+  --segments-vcf sample.genotyped-segments.vcf.gz \
+  --sample-name SAMPLE_01 \
+  --output SAMPLE_01.html
+```
+
+`--segments-vcf` accepts a plain or gzipped GATK genotyped-segments VCF.
+Called deletions are shown in red and duplications in blue. A single VCF
+sample is selected automatically; use `--sample-name` to select a sample from
+a multi-sample VCF. The same value is used as the report's sample label.
+Filtered records are excluded unless `--include-filtered-segments` is used,
+in which case their filter status is visible in the report.
+
+Strict sample/background interval validation is enabled by default. When
+`--allow-interval-mismatches` is used, the command prints a warning and records
+the relaxed validation mode in the report.
 
 ## Python API
 
@@ -118,6 +161,27 @@ with gcnvplot.TranscriptIndex(Path("annotations.sqlite")) as transcript_index:
         sample_name="SAMPLE_01",
         highlight="chr17:43070928-43076614",
     )
+```
+
+For repeated plots, `prepare_plot_data` parses and normalizes a sample once,
+and `render_prepared_plot_svg` renders regions from that prepared data.
+`build_report` exposes the same report workflow as the command line:
+
+```python
+from pathlib import Path
+
+import gcnvplot
+
+result = gcnvplot.build_report(
+    Path("sample.tsv"),
+    Path("background.tsv"),
+    Path("genes.tsv"),
+    Path("annotations.sqlite"),
+    Path("sample.html"),
+    segments_vcf_path=Path("sample.genotyped-segments.vcf.gz"),
+    sample_name="SAMPLE_01",
+)
+print(result.gene_count)
 ```
 
 ## Synthetic example

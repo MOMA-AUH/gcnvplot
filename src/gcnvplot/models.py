@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Literal
 
 Interval = tuple[str, int, int]
 
@@ -27,6 +28,8 @@ class TranscriptAnnotation:
     start: int
     end: int
     exons: list[TranscriptExon]
+    stable_ids: tuple[str, ...] = ()
+    is_mane_select: bool = False
 
 
 @dataclass(frozen=True)
@@ -36,3 +39,13 @@ class BackgroundSummary:
     rows: dict[Interval, dict[str, str]]
     lower_percentile: int | None = None
     upper_percentile: int | None = None
+    metadata: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class PlotOverlay:
+    """A typed genomic band rendered on a plot."""
+
+    interval: Interval
+    kind: Literal["highlight", "deletion", "duplication"]
+    label: str | None = None

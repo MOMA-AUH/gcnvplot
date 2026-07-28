@@ -30,9 +30,10 @@ test:
     - gcnvplot create-background --help
     - gcnvplot index-gtf --help
     - gcnvplot plot --help
+    - gcnvplot report --help
 
 about:
   home: https://github.com/MOMA-AUH/gcnvplot
-  summary: Command-line tools for plotting GATK germline CNV results
+  summary: Command-line tools for plotting and reporting GATK germline CNV results
   license: MIT
   license_file: LICENSE
