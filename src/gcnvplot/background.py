@@ -42,13 +42,18 @@ def parse_background(path: Path) -> BackgroundSummary:
     """Parse a background TSV created by create-background."""
     lower_percentile: int | None = None
     upper_percentile: int | None = None
+    metadata: dict[str, str] = {}
     with open_text(path) as handle:
         for line in handle:
             if line.startswith("#"):
-                if line.startswith("# lower_percentile="):
-                    lower_percentile = int(line.split("=", 1)[1])
-                elif line.startswith("# upper_percentile="):
-                    upper_percentile = int(line.split("=", 1)[1])
+                item = line[1:].strip()
+                if "=" in item:
+                    key, value = item.split("=", 1)
+                    metadata[key.strip()] = value.strip()
+                if item.startswith("lower_percentile="):
+                    lower_percentile = int(item.split("=", 1)[1])
+                elif item.startswith("upper_percentile="):
+                    upper_percentile = int(item.split("=", 1)[1])
                 continue
             header = line.rstrip("\n").split("\t")
             if header != BACKGROUND_FIELDS:
@@ -66,6 +71,7 @@ def parse_background(path: Path) -> BackgroundSummary:
         rows=background,
         lower_percentile=lower_percentile,
         upper_percentile=upper_percentile,
+        metadata=metadata,
     )
 
 
@@ -208,7 +214,18 @@ def create_background(
         }
         rows[interval] = {key: fmt(value) for key, value in row.items()}
 
-    return BackgroundSummary(rows=rows, lower_percentile=5, upper_percentile=95)
+    return BackgroundSummary(
+        rows=rows,
+        lower_percentile=5,
+        upper_percentile=95,
+        metadata={
+            "normalization": "median-of-ratios",
+            "baseline": "median-positive-count",
+            "samples": str(len(sample_counts)),
+            "lower_percentile": "5",
+            "upper_percentile": "95",
+        },
+    )
 
 
 def write_background(

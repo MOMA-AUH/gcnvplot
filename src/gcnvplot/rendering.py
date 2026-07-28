@@ -6,7 +6,7 @@ import html
 import math
 from pathlib import Path
 
-from .models import Interval, TranscriptAnnotation
+from .models import Interval, PlotOverlay, TranscriptAnnotation
 from .utils import fmt, overlaps
 
 
@@ -32,6 +32,7 @@ def _build_plot_svg(
     sample_name: str | None = None,
     highlight: Interval | None = None,
     transcript: TranscriptAnnotation | None = None,
+    overlays: list[PlotOverlay] | None = None,
 ) -> str:
     """Build the SVG markup for a plot from prepared rows."""
     base_width = 1400
@@ -74,14 +75,29 @@ def _build_plot_svg(
     sample_points = " ".join(f"{x_for(float(row['mid'])):.2f},{y_for(float(row['signal'])):.2f}" for row in points)
     baseline_value = 0.0
 
-    highlight_start: float | None = None
-    highlight_end: float | None = None
-    if highlight is not None and highlight[0] == region[0]:
-        clipped_start = max(region_start, highlight[1])
-        clipped_end = min(region_end, highlight[2])
-        if clipped_start < clipped_end:
-            highlight_start = x_for(float(clipped_start))
-            highlight_end = x_for(float(clipped_end))
+    plot_overlays = list(overlays or [])
+    if highlight is not None:
+        plot_overlays.append(PlotOverlay(highlight, "highlight"))
+    visible_overlays: list[tuple[PlotOverlay, float, float]] = []
+    for overlay in plot_overlays:
+        if overlay.interval[0] != region[0]:
+            continue
+        clipped_start = max(region_start, overlay.interval[1])
+        clipped_end = min(region_end, overlay.interval[2])
+        if clipped_start <= clipped_end:
+            visible_overlays.append(
+                (overlay, x_for(float(clipped_start)), x_for(float(clipped_end)))
+            )
+    highlight_geometry = next(
+        (
+            (start, end)
+            for overlay, start, end in visible_overlays
+            if overlay.kind == "highlight" and overlay.interval == highlight
+        ),
+        None,
+    )
+    highlight_start = highlight_geometry[0] if highlight_geometry is not None else None
+    highlight_end = highlight_geometry[1] if highlight_geometry is not None else None
 
     y_axis_label = "log2(sample/background)"
     elements = [
@@ -100,6 +116,9 @@ def _build_plot_svg(
         ".exon-uncovered-marker { fill: #b91c1c; }",
         ".baseline { stroke: #5b6472; stroke-width: 2; stroke-dasharray: 6 5; }",
         ".highlight-band { fill: #f59e0b; opacity: 0.28; stroke: #b45309; stroke-width: 1.1; }",
+        ".overlay-band { opacity: 0.20; stroke-width: 1.3; pointer-events: all; }",
+        ".overlay-deletion { fill: #dc2626; stroke: #991b1b; }",
+        ".overlay-duplication { fill: #2563eb; stroke: #1e40af; }",
         ".panel { fill: #ffffff; stroke: #d8dee4; stroke-width: 1.2; }",
         ".panel-label { font-size: 12px; font-weight: 700; }",
         ".panel-text { font-size: 12px; }",
@@ -111,11 +130,25 @@ def _build_plot_svg(
     ]
     content_start_index = len(elements)
 
-    if highlight_start is not None and highlight_end is not None:
-        band_x = min(highlight_start, highlight_end)
-        band_width = abs(highlight_end - highlight_start)
+    for overlay, overlay_start, overlay_end in visible_overlays:
+        band_x = min(overlay_start, overlay_end)
+        band_width = max(1.0, abs(overlay_end - overlay_start))
+        if overlay.kind == "highlight":
+            elements.append(
+                f'<rect class="highlight-band" x="{band_x:.2f}" y="{top}" '
+                f'width="{band_width:.2f}" height="{height - bottom - top:.2f}"/>'
+            )
+            continue
+        css_class = f"overlay-band overlay-{overlay.kind}"
+        title = (
+            f"<title>{html.escape(overlay.label)}</title>"
+            if overlay.label is not None
+            else ""
+        )
         elements.append(
-            f'<rect class="highlight-band" x="{band_x:.2f}" y="{top}" width="{band_width:.2f}" height="{height - bottom - top:.2f}"/>'
+            f'<rect class="{css_class}" x="{band_x:.2f}" y="{top}" '
+            f'width="{band_width:.2f}" height="{height - bottom - top:.2f}">'
+            f"{title}</rect>"
         )
 
     for i in range(6):
@@ -202,13 +235,28 @@ def _build_plot_svg(
             if right.start > left.end
         ]
 
-        if highlight_start is not None and highlight_end is not None:
+        for overlay, overlay_start, overlay_end in visible_overlays:
             track_highlight_y = exon_top - 18
             track_highlight_h = exon_height + 30
-            band_x = min(highlight_start, highlight_end)
-            band_width = abs(highlight_end - highlight_start)
+            band_x = min(overlay_start, overlay_end)
+            band_width = max(1.0, abs(overlay_end - overlay_start))
+            if overlay.kind == "highlight":
+                elements.append(
+                    f'<rect class="highlight-band" x="{band_x:.2f}" '
+                    f'y="{track_highlight_y:.2f}" width="{band_width:.2f}" '
+                    f'height="{track_highlight_h:.2f}"/>'
+                )
+                continue
+            css_class = f"overlay-band overlay-{overlay.kind}"
+            title = (
+                f"<title>{html.escape(overlay.label)}</title>"
+                if overlay.label is not None
+                else ""
+            )
             elements.append(
-                f'<rect class="highlight-band" x="{band_x:.2f}" y="{track_highlight_y:.2f}" width="{band_width:.2f}" height="{track_highlight_h:.2f}"/>'
+                f'<rect class="{css_class}" x="{band_x:.2f}" '
+                f'y="{track_highlight_y:.2f}" width="{band_width:.2f}" '
+                f'height="{track_highlight_h:.2f}">{title}</rect>'
             )
 
         for span_start, span_end in spans:
@@ -331,27 +379,52 @@ def _build_plot_svg(
     detail_section: list[tuple[str, str]] = []
     if highlight_start is not None and highlight_end is not None:
         detail_section.append(("Highlight", f"{highlight[0]}:{highlight[1]:,}-{highlight[2]:,}"))
-    if transcript is not None and highlight is not None and highlight[0] == region[0]:
-        visible_highlight_start = max(region[1], highlight[1])
-        visible_highlight_end = min(region[2], highlight[2])
-        if visible_highlight_start < visible_highlight_end:
-            covered_exons = [
+    covered_exons: set[int] = set()
+    detail_intervals: list[Interval] = []
+    if highlight is not None:
+        detail_intervals.append(highlight)
+    elif overlays:
+        detail_intervals.extend(
+            overlay.interval
+            for overlay in overlays
+            if overlay.kind in {"deletion", "duplication"}
+        )
+        if detail_intervals:
+            detail_section.append(
+                (
+                    "Highlight",
+                    ", ".join(
+                        f"{contig}:{start:,}-{end:,}"
+                        for contig, start, end in detail_intervals
+                    ),
+                )
+            )
+    if transcript is not None:
+        for detail_contig, detail_start, detail_end in detail_intervals:
+            if detail_contig != region[0]:
+                continue
+            visible_start = max(region[1], detail_start)
+            visible_end = min(region[2], detail_end)
+            if visible_start >= visible_end:
+                continue
+            covered_exons.update(
                 exon.number
                 for exon in transcript.exons
-                if overlaps(exon.start, exon.end, visible_highlight_start, visible_highlight_end)
-            ]
-            if covered_exons:
-                runs: list[str] = []
-                run_start = covered_exons[0]
-                run_prev = covered_exons[0]
-                for exon_number in covered_exons[1:]:
-                    if exon_number == run_prev + 1:
-                        run_prev = exon_number
-                        continue
-                    runs.append(str(run_start) if run_start == run_prev else f"{run_start}-{run_prev}")
-                    run_start = run_prev = exon_number
-                runs.append(str(run_start) if run_start == run_prev else f"{run_start}-{run_prev}")
-                detail_section.append(("Exons", ",".join(runs)))
+                if overlaps(exon.start, exon.end, visible_start, visible_end)
+            )
+    if covered_exons:
+        runs: list[str] = []
+        covered_exon_numbers = sorted(covered_exons)
+        run_start = covered_exon_numbers[0]
+        run_prev = covered_exon_numbers[0]
+        for exon_number in covered_exon_numbers[1:]:
+            if exon_number == run_prev + 1:
+                run_prev = exon_number
+                continue
+            runs.append(str(run_start) if run_start == run_prev else f"{run_start}-{run_prev}")
+            run_start = run_prev = exon_number
+        runs.append(str(run_start) if run_start == run_prev else f"{run_start}-{run_prev}")
+        detail_section.append(("Exons", ",".join(runs)))
     if detail_section:
         info_sections.append(detail_section)
 
@@ -413,6 +486,7 @@ def write_svg_plot(
     sample_name: str | None = None,
     highlight: Interval | None = None,
     transcript: TranscriptAnnotation | None = None,
+    overlays: list[PlotOverlay] | None = None,
 ) -> None:
     """Write an SVG plot for the sample and background."""
     svg = _build_plot_svg(
@@ -421,6 +495,7 @@ def write_svg_plot(
         sample_name=sample_name,
         highlight=highlight,
         transcript=transcript,
+        overlays=overlays,
     )
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(svg, encoding="utf-8")

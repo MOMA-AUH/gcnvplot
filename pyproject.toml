@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "gcnvplot"
 version = "1.0.0"
-description = "Command-line tools for plotting GATK germline CNV results."
+description = "Command-line tools for plotting and reporting GATK germline CNV results."
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [{name = "Michael Knudsen"}]
