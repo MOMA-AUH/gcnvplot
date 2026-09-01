@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import gzip
+import re
 import sqlite3
 from pathlib import Path
 
@@ -70,12 +71,13 @@ def _write_segments(
     *,
     filters: str = "PASS",
     sample: str = "SAMPLE",
+    contig: str = "chr1",
 ) -> None:
     text = (
         "##fileformat=VCFv4.2\n"
         "##INFO=<ID=END,Number=1,Type=Integer,Description=\"End\">\n"
         f"#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\t{sample}\n"
-        f"chr1\t120\tcall1\tN\t<DEL>,<DUP>\t100\t{filters}\t"
+        f"{contig}\t120\tcall1\tN\t<DEL>,<DUP>\t100\t{filters}\t"
         "END=220\tGT:CN\t1:1\n"
     )
     if path.suffix == ".gz":
@@ -140,6 +142,43 @@ def test_parse_segments_and_native_overlay(tmp_path: Path, suffix: str) -> None:
     assert segments[0].as_overlay("chr1").kind == "deletion"
 
 
+def test_background_ribbon_is_neutral_and_distinct_from_duplications(
+    tmp_path: Path,
+) -> None:
+    counts, background, _gtf, _transcript_db = _write_inputs(tmp_path)
+    svg = gcnvplot.render_plot_svg(
+        counts,
+        background,
+        region="chr1:100-250",
+        overlays=[
+            gcnvplot.PlotOverlay(
+                ("chr1", 120, 220),
+                "duplication",
+            )
+        ],
+    )
+
+    ribbon_match = re.search(r"\.ribbon \{ fill: (#[0-9a-f]{6});", svg)
+    duplication_match = re.search(
+        r"\.overlay-duplication \{ fill: (#[0-9a-f]{6});",
+        svg,
+    )
+    assert ribbon_match is not None
+    assert duplication_match is not None
+
+    def rgb(value: str) -> tuple[int, int, int]:
+        return (
+            int(value[1:3], 16),
+            int(value[3:5], 16),
+            int(value[5:7], 16),
+        )
+
+    ribbon_rgb = rgb(ribbon_match.group(1))
+    duplication_rgb = rgb(duplication_match.group(1))
+    assert max(ribbon_rgb) - min(ribbon_rgb) <= 2
+    assert duplication_rgb[2] - max(duplication_rgb[:2]) >= 40
+
+
 def test_multisample_segments_require_explicit_selection(tmp_path: Path) -> None:
     path = tmp_path / "multi.vcf"
     path.write_text(
@@ -162,6 +201,19 @@ def test_report_cli_has_one_sample_name_option(
         cli.main(["report", "--help"])
     assert exc_info.value.code == 0
     help_text = capsys.readouterr().out
+    assert "--sample-name" in help_text
+    assert "--vcf-sample" not in help_text
+
+
+def test_plot_cli_exposes_segments_options(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main(["plot", "--help"])
+    assert exc_info.value.code == 0
+    help_text = capsys.readouterr().out
+    assert "--segments-vcf" in help_text
+    assert "--include-filtered-segments" in help_text
     assert "--sample-name" in help_text
     assert "--vcf-sample" not in help_text
 
@@ -240,6 +292,59 @@ def test_transcript_plot_adapts_refseq_contig_to_count_contig(
         transcript_index=transcript_db,
     )
     assert "chr1:100-250" in svg
+
+
+@pytest.mark.parametrize("target", ["region", "transcript"])
+def test_plot_cli_renders_segments_vcf_overlays(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    target: str,
+) -> None:
+    counts, background, _gtf, transcript_db = _write_inputs(tmp_path)
+    segments = tmp_path / "segments.vcf"
+    _write_segments(
+        segments,
+        filters="LowQS",
+        contig="NC_000001.11",
+    )
+    output = tmp_path / f"{target}.svg"
+    target_arguments = (
+        ["--region", "chr1:100-250"]
+        if target == "region"
+        else [
+            "--transcript",
+            "CUSTOM_TX.1",
+            "--transcript-db",
+            str(transcript_db),
+        ]
+    )
+
+    assert cli.main(
+        [
+            "plot",
+            "--read-counts",
+            str(counts),
+            "--background",
+            str(background),
+            *target_arguments,
+            "--segments-vcf",
+            str(segments),
+            "--include-filtered-segments",
+            "--output",
+            str(output),
+        ]
+    ) == 0
+
+    svg = output.read_text(encoding="utf-8")
+    assert 'class="overlay-band overlay-deletion"' in svg
+    assert "DEL · NC_000001.11:120-220 · CN=1 · FILTER=LowQS" in svg
+    assert ">SAMPLE</text>" in svg
+    assert ">chr1:120-220</text>" in svg
+    assert capsys.readouterr().out == (
+        "Plotted intervals: 2\n"
+        "Overlapping CNV segments: 1\n"
+        f"Wrote: {output}\n"
+    )
 
 
 def test_cli_builds_self_contained_report_with_native_cnv_overlay(

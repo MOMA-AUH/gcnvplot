@@ -106,7 +106,7 @@ def _build_plot_svg(
         "text { font-family: Arial, Helvetica, sans-serif; fill: #1f2933; }",
         ".axis { stroke: #1f2933; stroke-width: 1.3; }",
         ".grid { stroke: #d8dee4; stroke-width: 1; }",
-        ".ribbon { fill: #c8d2df; opacity: 0.85; }",
+        ".ribbon { fill: #d4d4d4; opacity: 0.85; }",
         ".sample { fill: none; stroke: #127c78; stroke-width: 2.2; }",
         ".point { stroke-width: 1.6; }",
         ".point-filled { fill: #127c78; stroke: white; }",
