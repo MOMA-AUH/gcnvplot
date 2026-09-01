@@ -26,7 +26,7 @@ The tool `gcnvplot` expects GATK `CollectReadCounts` tables as input. These can 
 
 For `create-background`, provide a text file with one sample read-count path per line. This command writes a background cohort TSV with interval-wise normalized summary statistics and a per-interval baseline median. By default, all background samples must contain exactly the same interval set. Use `--allow-interval-mismatches` only when partial interval overlap is intentional.
 
-For `plot`, provide one sample read-count file, one background TSV produced by `create-background`, and a genomic region such as `chr1:100-299`. This command writes an SVG plot showing the sample log2 signal relative to the background cohort. By default, the selected sample and background intervals must match exactly, and selected sample intervals must have usable background statistics. Use `--allow-interval-mismatches` only when that overlap is intentionally partial.
+For `plot`, provide one sample read-count file, one background TSV produced by `create-background`, and a genomic region such as `chr1:100-299`. This command writes an SVG plot showing the sample log2 signal relative to the background cohort. Pass `--segments-vcf` to overlay called deletions in red and duplications in blue. By default, the selected sample and background intervals must match exactly, and selected sample intervals must have usable background statistics. Use `--allow-interval-mismatches` only when that overlap is intentionally partial.
 
 If you want to plot by transcript, first build a SQLite transcript database once with `index-gtf`, then use `--transcript <TRANSCRIPT_ID>` together with `--transcript-db <annotations.sqlite>`. The index retains transcript coordinates, gene identifiers from `gene_id` and database cross-references, and MANE Select tags when present. Transcript identifiers are not restricted to one annotation provider. Standard RefSeq chromosome accessions such as `NC_000001.11` are matched automatically to common read-count names such as `chr1` or `1`. This adds an exon track beneath the signal plot. If you want a custom label in the right-side info panel, pass `--sample-name <LABEL>`.
 
@@ -48,9 +48,16 @@ gcnvplot plot \
   --background background.tsv \
   --transcript NM_007294.4 \
   --transcript-db annotations.sqlite \
+  --segments-vcf sample.genotyped-segments.vcf.gz \
   --sample-name SAMPLE_01 \
   --output plot.svg
 ```
+
+For both `plot` and `report`, `--segments-vcf` accepts a plain or gzipped GATK
+genotyped-segments VCF. A single VCF sample is selected automatically; use
+`--sample-name` to select a sample from a multi-sample VCF. The selected VCF
+sample is also used as the plot label when `--sample-name` is omitted. Filtered
+records are excluded unless `--include-filtered-segments` is used.
 
 ## HTML gene reports
 
@@ -83,12 +90,8 @@ gcnvplot report \
   --output SAMPLE_01.html
 ```
 
-`--segments-vcf` accepts a plain or gzipped GATK genotyped-segments VCF.
-Called deletions are shown in red and duplications in blue. A single VCF
-sample is selected automatically; use `--sample-name` to select a sample from
-a multi-sample VCF. The same value is used as the report's sample label.
-Filtered records are excluded unless `--include-filtered-segments` is used,
-in which case their filter status is visible in the report.
+Called deletions are shown in red and duplications in blue. When filtered
+segments are included, their filter status is visible in the report.
 
 Strict sample/background interval validation is enabled by default. When
 `--allow-interval-mismatches` is used, the command prints a warning and records

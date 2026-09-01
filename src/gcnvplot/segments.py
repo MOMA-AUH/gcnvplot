@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from .models import PlotOverlay, TranscriptAnnotation
+from .models import Interval, PlotOverlay, TranscriptAnnotation
 from .transcripts import contig_aliases
 from .utils import open_text
 
@@ -206,11 +206,22 @@ def segments_for_transcript(
     transcript: TranscriptAnnotation,
 ) -> list[CnvSegment]:
     """Return segments overlapping a transcript using common contig aliases."""
-    transcript_aliases = set(contig_aliases(transcript.contig))
+    return segments_for_region(
+        segments,
+        (transcript.contig, transcript.start, transcript.end),
+    )
+
+
+def segments_for_region(
+    segments: list[CnvSegment],
+    region: Interval,
+) -> list[CnvSegment]:
+    """Return segments overlapping a region using common contig aliases."""
+    region_aliases = set(contig_aliases(region[0]))
     return [
         segment
         for segment in segments
-        if transcript_aliases.intersection(contig_aliases(segment.contig))
-        and segment.start <= transcript.end
-        and segment.end >= transcript.start
+        if region_aliases.intersection(contig_aliases(segment.contig))
+        and segment.start <= region[2]
+        and segment.end >= region[1]
     ]

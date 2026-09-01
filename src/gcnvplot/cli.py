@@ -104,7 +104,20 @@ def build_parser() -> argparse.ArgumentParser:
     )
     plot.add_argument(
         "--sample-name",
-        help="Optional sample label to show in the plot info panel.",
+        help=(
+            "Sample label shown in the plot and sample selector for a "
+            "multi-sample segments VCF."
+        ),
+    )
+    plot.add_argument(
+        "--segments-vcf",
+        type=Path,
+        help="Optional GATK genotyped segments VCF or VCF.GZ.",
+    )
+    plot.add_argument(
+        "--include-filtered-segments",
+        action="store_true",
+        help="Include segment records whose FILTER is neither PASS nor '.'.",
     )
     plot.add_argument(
         "--allow-interval-mismatches",

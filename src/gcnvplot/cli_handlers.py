@@ -15,6 +15,7 @@ from .plotting import (
 from .read_counts import parse_read_counts, read_path_list
 from .report import build_report
 from .rendering import write_svg_plot
+from .segments import CnvSegment, parse_segments_vcf, segments_for_region
 from .transcripts import (
     adapt_transcript_contig,
     index_gtf,
@@ -115,15 +116,29 @@ def plot_sample(args: argparse.Namespace) -> int:
     if not rows:
         raise SystemExit("No intervals with background statistics overlap the selected region.")
 
+    selected_vcf_sample: str | None = None
+    plot_segments: list[CnvSegment] = []
+    segments_vcf_path = getattr(args, "segments_vcf", None)
+    if segments_vcf_path is not None:
+        selected_vcf_sample, all_segments = parse_segments_vcf(
+            segments_vcf_path,
+            sample_name=args.sample_name,
+            include_filtered=getattr(args, "include_filtered_segments", False),
+        )
+        plot_segments = segments_for_region(all_segments, region)
+
     write_svg_plot(
         rows,
         args.output,
         region,
-        sample_name=args.sample_name,
+        sample_name=args.sample_name or selected_vcf_sample,
         highlight=args.highlight,
         transcript=transcript,
+        overlays=[segment.as_overlay(contig=region[0]) for segment in plot_segments],
     )
     print(f"Plotted intervals: {len(rows)}")
+    if segments_vcf_path is not None:
+        print(f"Overlapping CNV segments: {len(plot_segments)}")
     print(f"Wrote: {args.output}")
     return 0
 
