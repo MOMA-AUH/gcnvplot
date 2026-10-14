@@ -5,6 +5,7 @@ from __future__ import annotations
 import gzip
 import re
 import sqlite3
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import pytest
@@ -1061,7 +1062,7 @@ def test_brca1_synthetic_example_renders(
     assert "BRCA1" in svg
     assert "Synthetic BRCA1 exon 13-15 deletion" in svg
     assert "point point-open" in svg
-    assert "Uncovered exon" in svg
+    assert "No usable background in exon" in svg
     assert "SIGNAL=-1.0291902" in svg
     assert '>13</text>' in svg
     assert '>10</text>' in svg
@@ -1485,7 +1486,7 @@ def test_plot_transcript_keeps_full_transcript_width_when_exons_are_uncovered(
     assert abs(uncovered_mid - ((exon_x_ranges[1][0] + exon_x_ranges[1][1]) / 2)) < 0.1
     assert len(uncovered_marker_x_values) == 1
     assert abs(uncovered_marker_x_values[0] - uncovered_mid) < 0.1
-    assert "Uncovered exon" in svg
+    assert "No usable background in exon" in svg
 
     assert capsys.readouterr().out == (
         "Plotted intervals: 1\n"
@@ -1650,3 +1651,165 @@ def test_plot_reverse_transcript_prunes_overlapping_exon_labels(
         "Plotted intervals: 2\n"
         f"Wrote: {output_path}\n"
     )
+
+
+def test_background_retains_measured_zeros_without_changing_usable_summaries(tmp_path: Path) -> None:
+    usable = ("chr1", 100, 199)
+    unsupported = ("chr1", 200, 299)
+    cohort = [{usable: 10}, {usable: 20}]
+    original = gcnvplot.create_background(cohort)
+    with_zeros = [sample | {unsupported: 0} for sample in cohort]
+    background = gcnvplot.create_background(with_zeros)
+    assert background.rows[usable] == original.rows[usable]
+    assert background.rows[unsupported] == {
+        "CONTIG": "chr1", "START": "200", "END": "299", "N": "2",
+        "BASELINE_MEDIAN": "0", "BG_NORM_MEAN": "0", "BG_NORM_MEDIAN": "0",
+        "BG_NORM_SD": "0", "BG_NORM_P5": "0", "BG_NORM_P95": "0",
+    }
+    paths = []
+    for index, sample in enumerate(with_zeros):
+        path = tmp_path / f"cohort{index}.tsv"
+        write_read_counts(path, [(*interval, count) for interval, count in sample.items()])
+        paths.append(path)
+    output = tmp_path / "background.tsv"
+    assert gcnvplot.write_background(paths, output) == 2
+    assert gcnvplot.load_background(output).rows == background.rows
+    before = gcnvplot.render_plot_svg(cohort[0], original, region="chr1:100-199")
+    after = gcnvplot.render_plot_svg(with_zeros[0], output, region="chr1:100-199")
+    assert after == before
+
+
+@pytest.fixture
+def gap_inputs(tmp_path: Path):
+    """Matched cohort with gaps at both edges and two adjacent internal gaps."""
+    cohort = []
+    for sample_index in range(2):
+        counts = {
+            ("chr1", start, start + 99): (0 if start in {100, 400, 500, 900} else 10)
+            for start in range(100, 1000, 100)
+        }
+        if sample_index:
+            counts[("chr1", 300, 399)] = 30
+        cohort.append(counts)
+    background = tmp_path / "background.tsv"
+    gcnvplot.write_background(cohort, background)
+    gtf = tmp_path / "gap.gtf"
+    exons = [(100, 150), (250, 450), (460, 550), (650, 720), (920, 950), (1020, 1050)]
+    attributes = 'gene_id "GAP"; gene_name "GAP"; transcript_id "GAP_TX"; tag "MANE Select";'
+    gtf.write_text(
+        f'chr1\ttest\ttranscript\t100\t1099\t.\t+\t.\t{attributes}\n'
+        + ''.join(f'chr1\ttest\texon\t{start}\t{end}\t.\t+\t.\t{attributes}\n' for start, end in exons),
+        encoding="utf-8",
+    )
+    db = tmp_path / "transcripts.sqlite"
+    gcnvplot.index_gtf(gtf, db)
+    return cohort[0], background, db
+
+
+def assert_gap_geometry(svg: str, *, transcript: bool) -> None:
+    """Inspect actual signal paths, without depending on plot preparation internals."""
+    root = ET.fromstring(svg)
+    ns = {"s": "http://www.w3.org/2000/svg"}
+    circles = [node for node in root.findall("s:circle", ns) if node.find("s:title", ns) is not None]
+    coordinates = {
+        node.find("s:title", ns).text.split("\n")[0]: float(node.attrib["cx"])
+        for node in circles
+    }
+    assert set(coordinates) == {
+        "chr1:200-299", "chr1:300-399", "chr1:600-699", "chr1:700-799", "chr1:800-899",
+    }
+    expected_runs = [
+        [coordinates["chr1:200-299"], coordinates["chr1:300-399"]],
+        [coordinates["chr1:600-699"], coordinates["chr1:700-799"], coordinates["chr1:800-899"]],
+    ]
+    for tag, css_class in [("polyline", "sample"), ("polygon", "ribbon")]:
+        paths = root.findall(f's:{tag}[@class="{css_class}"]', ns)
+        assert len(paths) == 2
+        for node, expected in zip(paths, expected_runs):
+            vertices = [tuple(map(float, point.split(","))) for point in node.attrib["points"].split()]
+            assert [x for x, _ in vertices] == (expected if css_class == "sample" else expected + expected[::-1])
+    markers = root.findall('s:polygon[@class="exon-uncovered-marker"]', ns)
+    assert all(node.find("s:title", ns) is None for node in markers)
+    if transcript:
+        assert len(markers) == 5  # Four unsupported exons plus the legend.
+        assert len(svg_uncovered_exon_x_ranges(svg)) == 4
+        ranges = svg_exon_x_ranges(svg)
+        assert svg_uncovered_exon_x_ranges(svg) == [ranges[i] for i in (0, 2, 4, 5)]
+        assert "No usable background in exon" in svg
+    else:
+        assert not markers
+
+
+@pytest.mark.parametrize("sample_count", [0, 25])
+@pytest.mark.parametrize("transcript", [False, True])
+def test_zero_background_intervals_break_signal_and_ribbon(
+    gap_inputs, sample_count: int, transcript: bool,
+) -> None:
+    counts, background, db = gap_inputs
+    counts = {interval: value if value else sample_count for interval, value in counts.items()}
+    kwargs = {"transcript_id": "GAP_TX", "transcript_index": db} if transcript else {"region": "chr1:100-1099"}
+    svg = gcnvplot.render_plot_svg(counts, background, **kwargs)
+    assert_gap_geometry(svg, transcript=transcript)
+    prepared = gcnvplot.prepare_plot_data(counts, background)
+    with gcnvplot.TranscriptIndex(db) as index:
+        annotation = index.get("GAP_TX") if transcript else None
+    prepared_svg = gcnvplot.render_prepared_plot_svg(prepared, ("chr1", 100, 1099), transcript=annotation)
+    assert_gap_geometry(prepared_svg, transcript=transcript)
+
+
+@pytest.mark.parametrize("transcript", [False, True])
+def test_plot_cli_preserves_zero_background_gaps(gap_inputs, tmp_path: Path, transcript: bool) -> None:
+    counts, background, db = gap_inputs
+    counts_path = tmp_path / "sample.tsv"
+    write_read_counts(counts_path, [(*interval, value or 25) for interval, value in counts.items()])
+    output = tmp_path / "gap.svg"
+    selection = ["--transcript", "GAP_TX", "--transcript-db", str(db)] if transcript else ["--region", "chr1:100-1099"]
+    assert cli.main([
+        "plot", "--read-counts", str(counts_path), "--background", str(background),
+        *selection, "--output", str(output),
+    ]) == 0
+    assert_gap_geometry(output.read_text(encoding="utf-8"), transcript=transcript)
+
+
+def test_mixed_background_counts_remain_usable_even_with_zero_median(tmp_path: Path) -> None:
+    anchor, mixed, zero_median = [("chr1", start, start + 99) for start in (100, 200, 300)]
+    cohort = [
+        {anchor: 10, mixed: 0, zero_median: 0},
+        {anchor: 10, mixed: 10, zero_median: 0},
+        {anchor: 10, mixed: 10, zero_median: 10},
+    ]
+    output = tmp_path / "mixed.tsv"
+    gcnvplot.write_background(cohort, output)
+    background = gcnvplot.load_background(output)
+    assert background.rows[mixed]["BG_NORM_MEDIAN"] == "10"
+    assert background.rows[zero_median]["BG_NORM_MEDIAN"] == "0"
+    assert background.rows[zero_median]["BASELINE_MEDIAN"] == "10"
+    assert background.rows[zero_median]["N"] == "3"
+    svg = gcnvplot.render_plot_svg(cohort[2], background, region="chr1:100-399")
+    assert set(svg_point_class_by_interval(svg)) == {"chr1:100-199", "chr1:200-299", "chr1:300-399"}
+    assert "SIGNAL=9.9672263" in svg
+    assert len(re.findall(r'<polyline class="sample"', svg)) == 1
+
+
+@pytest.mark.parametrize("field,value", [
+    ("BASELINE_MEDIAN", "-1"), ("BASELINE_MEDIAN", "nan"),
+    ("BG_NORM_MEAN", "1"), ("BG_NORM_MEDIAN", "1"), ("BG_NORM_SD", "1"),
+    ("BG_NORM_P5", "1"), ("BG_NORM_P95", "1"), ("N", "0"), ("N", "-1"),
+])
+def test_inconsistent_zero_background_is_still_rejected(field: str, value: str) -> None:
+    counts = {("chr1", 100, 199): 10, ("chr1", 200, 299): 0}
+    background = gcnvplot.create_background([counts])
+    background.rows[("chr1", 200, 299)][field] = value
+    with pytest.raises(ValueError, match="missing usable background statistics"):
+        gcnvplot.render_plot_svg(counts, background, region="chr1:100-299")
+
+
+def test_zero_coverage_does_not_supply_a_normalization_fallback() -> None:
+    usable, unsupported = ("chr1", 100, 199), ("chr1", 200, 299)
+    cohort = [{usable: 10, unsupported: 0}, {usable: 0, unsupported: 0}]
+    with pytest.raises(ValueError, match="Cannot normalize"):
+        gcnvplot.create_background(cohort)
+    background = gcnvplot.create_background(cohort[:1])
+    for sample in ({usable: 0, unsupported: 0}, {usable: 0, unsupported: 25}):
+        with pytest.raises(ValueError, match="Cannot normalize"):
+            gcnvplot.render_plot_svg(sample, background, region="chr1:100-299")

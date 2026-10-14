@@ -192,9 +192,7 @@ def create_background(
         interval_values,
         key=lambda item: (item[0], item[1], item[2]),
     ):
-        baseline = baselines.get(interval)
-        if baseline is None or baseline <= 0:
-            continue
+        baseline = baselines.get(interval, 0.0)
         values = interval_values[interval]
         contig, start, end = interval
         row = {
