@@ -38,18 +38,7 @@ def build_background(args: argparse.Namespace) -> int:
     if not files:
         raise SystemExit(f"{args.read_counts_list}: no read-count TSV paths found")
 
-    if args.allow_interval_mismatches:
-        print(
-            "Warning: interval-set validation is disabled; "
-            "mismatched background intervals can affect normalization.",
-            file=sys.stderr,
-        )
-
-    written_intervals = write_background(
-        files,
-        args.output,
-        strict_intervals=not args.allow_interval_mismatches,
-    )
+    written_intervals = write_background(files, args.output)
 
     print(f"Background samples: {len(files)}")
     print(f"Background intervals: {written_intervals}")
