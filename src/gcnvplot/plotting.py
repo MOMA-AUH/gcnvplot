@@ -81,10 +81,17 @@ def _prepared_plot_rows(
             continue
         bg = prepared.background.rows.get(interval)
         sample_value = prepared.sample_norm.get(interval)
+        no_coverage = bg is not None and int(bg["N"]) > 0 and all(
+            float(bg[field]) == 0
+            for field in (
+                "BASELINE_MEDIAN", "BG_NORM_MEAN", "BG_NORM_MEDIAN",
+                "BG_NORM_SD", "BG_NORM_P5", "BG_NORM_P95",
+            )
+        )
         if (
             bg is None
             or sample_value is None
-            or float(bg["BASELINE_MEDIAN"]) <= 0
+            or (not float(bg["BASELINE_MEDIAN"]) > 0 and not no_coverage)
         ):
             missing_background += 1
             continue
@@ -107,9 +114,10 @@ def _prepared_plot_rows(
             overlaps(interval[1], interval[2], exon.start, exon.end)
             for exon in transcript.exons
         )
-        row["signal"] = log2_ratio(sample_value, bg_median, 0.01)
-        row["signal_lower"] = log2_ratio(bg_lower, bg_median, 0.01)
-        row["signal_upper"] = log2_ratio(bg_upper, bg_median, 0.01)
+        # Keep unsupported intervals as gaps, without inventing a relative signal.
+        row["signal"] = None if no_coverage else log2_ratio(sample_value, bg_median, 0.01)
+        row["signal_lower"] = None if no_coverage else log2_ratio(bg_lower, bg_median, 0.01)
+        row["signal_upper"] = None if no_coverage else log2_ratio(bg_upper, bg_median, 0.01)
         rows.append(row)
     return rows, missing_background
 
@@ -251,8 +259,8 @@ def render_plot_svg(
 
     Provide exactly one of ``region`` or ``transcript_id``. When
     ``strict_intervals`` is true, the selected sample/background interval sets
-    must match exactly and selected intervals without usable background
-    statistics raise ``ValueError`` instead of being silently skipped.
+    must match exactly. Retained all-zero background intervals produce gaps;
+    missing or inconsistent background statistics raise ``ValueError``.
     """
     if region is not None and transcript_id is not None:
         raise ValueError("region and transcript_id are mutually exclusive")

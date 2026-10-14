@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import html
 import math
+from itertools import groupby
 from pathlib import Path
 
 from .models import Interval, PlotOverlay, TranscriptAnnotation
@@ -52,9 +53,12 @@ def _build_plot_svg(
     region_start = region[1]
     region_end = region[2]
 
-    y_values = [float(row["signal"]) for row in rows]
-    band_lower = [float(row["signal_lower"]) for row in rows]
-    band_upper = [float(row["signal_upper"]) for row in rows]
+    signal_rows = [row for row in rows if row["signal"] is not None]
+    if not signal_rows:
+        raise ValueError("No intervals with usable background statistics overlap the selected region.")
+    y_values = [float(row["signal"]) for row in signal_rows]
+    band_lower = [float(row["signal_lower"]) for row in signal_rows]
+    band_upper = [float(row["signal_upper"]) for row in signal_rows]
     all_y = y_values + band_lower + band_upper
     y_min = min(all_y)
     y_max = max(all_y)
@@ -68,11 +72,13 @@ def _build_plot_svg(
     def y_for(value: float) -> float:
         return top + (y_max - value) * plot_height / max(1e-12, y_max - y_min)
 
-    points = sorted(rows, key=lambda row: float(row["mid"]))
-    upper_points = [(x_for(float(row["mid"])), y_for(float(row["signal_upper"]))) for row in points]
-    lower_points = [(x_for(float(row["mid"])), y_for(float(row["signal_lower"]))) for row in reversed(points)]
-    ribbon_points = " ".join(f"{x:.2f},{y:.2f}" for x, y in upper_points + lower_points)
-    sample_points = " ".join(f"{x_for(float(row['mid'])):.2f},{y_for(float(row['signal'])):.2f}" for row in points)
+    ordered_rows = sorted(rows, key=lambda row: float(row["mid"]))
+    signal_runs = [
+        list(group)
+        for usable, group in groupby(ordered_rows, key=lambda row: row["signal"] is not None)
+        if usable
+    ]
+    points = [row for run in signal_runs for row in run]
     baseline_value = 0.0
 
     plot_overlays = list(overlays or [])
@@ -170,15 +176,23 @@ def _build_plot_svg(
             ]
         )
 
+    for run in signal_runs:
+        upper_points = [(x_for(float(row["mid"])), y_for(float(row["signal_upper"]))) for row in run]
+        lower_points = [(x_for(float(row["mid"])), y_for(float(row["signal_lower"]))) for row in reversed(run)]
+        ribbon_points = " ".join(f"{x:.2f},{y:.2f}" for x, y in upper_points + lower_points)
+        elements.append(f'<polygon class="ribbon" points="{ribbon_points}"/>')
+
     elements.extend(
         [
-            f'<polygon class="ribbon" points="{ribbon_points}"/>',
             f'<line class="baseline" x1="{left}" y1="{y_for(baseline_value):.2f}" x2="{plot_right}" y2="{y_for(baseline_value):.2f}"/>',
-            f'<polyline class="sample" points="{sample_points}"/>',
             f'<line class="axis" x1="{left}" y1="{top}" x2="{left}" y2="{height - bottom}"/>',
             f'<line class="axis" x1="{left}" y1="{height - bottom}" x2="{plot_right}" y2="{height - bottom}"/>',
         ]
     )
+
+    for run in signal_runs:
+        sample_points = " ".join(f"{x_for(float(row['mid'])):.2f},{y_for(float(row['signal'])):.2f}" for row in run)
+        elements.append(f'<polyline class="sample" points="{sample_points}"/>')
 
     for row in points:
         x = x_for(float(row["mid"]))
@@ -210,7 +224,7 @@ def _build_plot_svg(
         covered_exon_numbers = {
             exon.number
             for exon in transcript.exons
-            if any(overlaps(exon.start, exon.end, int(row["start"]), int(row["end"])) for row in rows)
+            if any(overlaps(exon.start, exon.end, int(row["start"]), int(row["end"])) for row in signal_rows)
         }
 
         def add_arrow(x_pos: float) -> None:
@@ -469,7 +483,7 @@ def _build_plot_svg(
                 f'<circle class="point point-open" cx="{panel_x + 24}" cy="{legend_y + 24}" r="5"/>',
                 f'<text class="panel-text" x="{panel_x + 40}" y="{legend_y + 28}">Outside exon</text>',
                 f'<polygon class="exon-uncovered-marker" points="{panel_x + 24:.2f},{legend_y + 45.50:.2f} {panel_x + 30.5:.2f},{legend_y + 52.00:.2f} {panel_x + 17.5:.2f},{legend_y + 52.00:.2f}"/>',
-                f'<text class="panel-text" x="{panel_x + 40}" y="{legend_y + 52}">Uncovered exon</text>',
+                f'<text class="panel-text" x="{panel_x + 40}" y="{legend_y + 52}">No usable background in exon</text>',
             ]
         )
     elements.append("</svg>")

@@ -447,3 +447,26 @@ def test_report_failure_does_not_replace_existing_output(tmp_path: Path) -> None
             output,
         )
     assert output.read_text(encoding="utf-8") == "keep me"
+
+
+@pytest.mark.parametrize("unsupported_count", [0, 25])
+def test_report_renders_gene_with_partial_background_coverage(tmp_path: Path, unsupported_count: int) -> None:
+    counts, background, _gtf, db = _write_inputs(tmp_path)
+    cohort = {("chr1", 100, 150): 10, ("chr1", 200, 250): 0}
+    gcnvplot.write_background([cohort, cohort], background)
+    counts.write_text(
+        "CONTIG\tSTART\tEND\tCOUNT\nchr1\t100\t150\t10\n"
+        f"chr1\t200\t250\t{unsupported_count}\n", encoding="utf-8",
+    )
+    genes = tmp_path / "genes.tsv"
+    _write_genes(genes)
+    output = tmp_path / "report.html"
+    result = gcnvplot.build_report(counts, background, genes, db, output)
+    assert result.gene_count == 1
+    page = output.read_text(encoding="utf-8")
+    assert "<title>chr1:100-150\n" in page
+    assert "<title>chr1:200-250\n" not in page
+    assert page.count('<polygon class="exon-uncovered-marker"') == 2  # Exon and legend.
+    assert 'class="exon-uncovered"' in page
+    assert "No usable background in exon" in page
+    assert 'class="sample"' in page

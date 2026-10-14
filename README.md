@@ -28,7 +28,13 @@ For `create-background`, provide a text file with one sample read-count path per
 
 Compatibility change: `create-background --allow-interval-mismatches` and the `strict_intervals` keyword on Python `create_background` and `write_background` have been removed. Remove these arguments and supply matching cohort inputs. The separate plotting and reporting mismatch overrides remain available.
 
-For `plot`, provide one sample read-count file, one background TSV produced by `create-background`, and a genomic region such as `chr1:100-299`. This command writes an SVG plot showing the sample log2 signal relative to the background cohort. Pass `--segments-vcf` to overlay called deletions in red and duplications in blue. By default, the selected sample and background intervals must match exactly, and selected sample intervals must have usable background statistics. Use `--allow-interval-mismatches` only when that overlap is intentionally partial.
+For `plot`, provide one sample read-count file, one background TSV produced by `create-background`, and a genomic region such as `chr1:100-299`. This command writes an SVG plot showing the sample log2 signal relative to the background cohort. Pass `--segments-vcf` to overlay called deletions in red and duplications in blue. By default, the selected sample and background intervals must match exactly, and selected sample intervals must have usable statistics or a valid retained all-zero background row. Use `--allow-interval-mismatches` only when that overlap is intentionally partial.
+
+Intervals measured as zero in every background sample are retained in memory and in TSV output. `BASELINE_MEDIAN` and all `BG_NORM_*` summaries are zero; `N` still counts the full cohort. No columns are added. Intervals with some positive background counts keep their existing behavior, even when their normalized median is zero.
+
+In regions with usable and all-zero background intervals, the sample line and background ribbon break at unsupported intervals. No relative signal is calculated there, whether the plotted sample count is zero or positive. Transcript plots mark an exon with a red triangle only when none of its overlapping intervals has usable background coverage (including exons with no intervals). The legend explains the marker; triangles have no tooltips. Region-only plots show gaps without exon markers. This behavior also applies to Python rendering and reports.
+
+Older background TSVs remain readable, but an omitted interval is still a missing record and fails strict matching. Regenerate backgrounds from the original read-count files to recover previously discarded all-zero intervals. Normalization still requires eligible positive counts and positive baselines; entirely zero-count cohort samples and plotted samples with no eligible positive count remain errors.
 
 If you want to plot by transcript, first build a SQLite transcript database once with `index-gtf`, then use `--transcript <TRANSCRIPT_ID>` together with `--transcript-db <annotations.sqlite>`. The index retains transcript coordinates, gene identifiers from `gene_id` and database cross-references, and MANE Select tags when present. Transcript identifiers are not restricted to one annotation provider. Standard RefSeq chromosome accessions such as `NC_000001.11` are matched automatically to common read-count names such as `chr1` or `1`. This adds an exon track beneath the signal plot. If you want a custom label in the right-side info panel, pass `--sample-name <LABEL>`.
 
@@ -103,7 +109,7 @@ the relaxed validation mode in the report.
 
 The Python package `gcnvplot` can also be used from Python code, for example when generating reports. Use `TranscriptIndex` to keep the SQLite transcript database open while rendering multiple plots.
 
-Use `create_background` to build an in-memory background summary from read-count TSV paths or already parsed read-count dictionaries. By default, all background samples must contain exactly the same interval set. Use `write_background` when you want to save the same summary format used by the CLI:
+Use `create_background` to build an in-memory background summary from read-count TSV paths or already parsed read-count dictionaries. All background samples must contain exactly the same interval set. Use `write_background` when you want to save the same summary format used by the CLI:
 
 ```python
 from pathlib import Path
@@ -147,7 +153,7 @@ with gcnvplot.TranscriptIndex(Path("annotations.sqlite")) as transcript_index:
 ```
 
 Provide exactly one of `region` or `transcript_id`. When using `transcript_id`, also provide `transcript_index`.
-By default, `render_plot_svg` raises a `ValueError` if the selected sample and background interval sets do not match exactly, or if any selected sample intervals are missing usable background statistics. Pass `strict_intervals=False` only when you deliberately want to skip mismatched or unusable intervals.
+By default, `render_plot_svg` raises a `ValueError` if the selected sample and background interval sets do not match exactly, or if selected background statistics are missing or inconsistent. Valid retained all-zero rows pass strict validation and appear as gaps. Pass `strict_intervals=False` only when you deliberately want to skip mismatched or unusable intervals.
 
 Use `write_plot` when you just want the finished SVG saved to disk. It is a convenience wrapper around `render_plot_svg`.
 
