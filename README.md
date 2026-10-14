@@ -24,7 +24,9 @@ gcnvplot --version
 
 The tool `gcnvplot` expects GATK `CollectReadCounts` tables as input. These can be plain TSV files or gzipped TSV files, and must contain the columns `CONTIG`, `START`, `END`, and `COUNT`.
 
-For `create-background`, provide a text file with one sample read-count path per line. This command writes a background cohort TSV with interval-wise normalized summary statistics and a per-interval baseline median. By default, all background samples must contain exactly the same interval set. Use `--allow-interval-mismatches` only when partial interval overlap is intentional.
+For `create-background`, provide a text file with one sample read-count path per line. This command writes a background cohort TSV with interval-wise normalized summary statistics and a per-interval baseline median. All background samples must contain exactly the same interval set. Missing or extra records are errors; a missing count is unknown and is never replaced by zero. Regenerate read counts using a common interval list if the sets differ.
+
+Compatibility change: `create-background --allow-interval-mismatches` and the `strict_intervals` keyword on Python `create_background` and `write_background` have been removed. Remove these arguments and supply matching cohort inputs. The separate plotting and reporting mismatch overrides remain available.
 
 For `plot`, provide one sample read-count file, one background TSV produced by `create-background`, and a genomic region such as `chr1:100-299`. This command writes an SVG plot showing the sample log2 signal relative to the background cohort. Pass `--segments-vcf` to overlay called deletions in red and duplications in blue. By default, the selected sample and background intervals must match exactly, and selected sample intervals must have usable background statistics. Use `--allow-interval-mismatches` only when that overlap is intentionally partial.
 

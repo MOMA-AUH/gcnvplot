@@ -239,42 +239,40 @@ def test_python_api_creates_and_writes_background(tmp_path: Path) -> None:
     assert "chr1\t200\t299\t25\t2\t25\t25\t0\t25\t25" in background_text
 
 
-def test_create_background_rejects_mismatched_interval_sets_by_default(
-    tmp_path: Path,
+@pytest.mark.parametrize("as_paths", [False, True])
+@pytest.mark.parametrize("second_intervals", [
+    [("chr1", 100, 199, 15)],
+    [("chr1", 100, 199, 15), ("chr1", 200, 299, 30), ("chr1", 300, 399, 10)],
+])
+def test_background_apis_require_matching_intervals(
+    tmp_path: Path, as_paths: bool, second_intervals: list[tuple[str, int, int, int]],
 ) -> None:
-    sample_a = tmp_path / "sample_a.tsv"
-    sample_b = tmp_path / "sample_b.tsv"
-    write_read_counts(
-        sample_a,
-        [
-            ("chr1", 100, 199, 10),
-            ("chr1", 200, 299, 20),
-        ],
-    )
-    write_read_counts(
-        sample_b,
-        [
-            ("chr1", 100, 199, 15),
-            ("chr1", 300, 399, 30),
-        ],
-    )
+    rows = [[("chr1", 100, 199, 10), ("chr1", 200, 299, 20)], second_intervals]
+    samples = []
+    for index, sample_rows in enumerate(rows):
+        path = tmp_path / f"sample_{index}.tsv"
+        write_read_counts(path, sample_rows)
+        samples.append(path if as_paths else gcnvplot.parse_read_counts(path))
 
     with pytest.raises(ValueError, match="Read-count interval sets do not match"):
-        gcnvplot.create_background([sample_a, sample_b])
+        gcnvplot.create_background(samples)
+    output = tmp_path / "background.tsv"
+    with pytest.raises(ValueError, match="Read-count interval sets do not match"):
+        gcnvplot.write_background(samples, output)
+    assert not output.exists()
 
-    background = gcnvplot.create_background(
-        [sample_a, sample_b],
-        strict_intervals=False,
-    )
-    assert set(background.rows) == {
-        ("chr1", 100, 199),
-        ("chr1", 200, 299),
-        ("chr1", 300, 399),
-    }
+    with pytest.raises(TypeError, match="strict_intervals"):
+        gcnvplot.create_background(samples, strict_intervals=False)
+    with pytest.raises(TypeError, match="strict_intervals"):
+        gcnvplot.write_background(samples, output, strict_intervals=False)
 
 
-def test_create_background_cli_allows_interval_mismatches_when_requested(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+@pytest.mark.parametrize("second_rows", [
+    [("chr1", 100, 199, 15)],
+    [("chr1", 100, 199, 15), ("chr1", 200, 299, 30), ("chr1", 300, 399, 10)],
+])
+def test_create_background_cli_requires_matching_intervals(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], second_rows,
 ) -> None:
     sample_a = tmp_path / "sample_a.tsv"
     sample_b = tmp_path / "sample_b.tsv"
@@ -287,10 +285,7 @@ def test_create_background_cli_allows_interval_mismatches_when_requested(
     )
     write_read_counts(
         sample_b,
-        [
-            ("chr1", 100, 199, 15),
-            ("chr1", 300, 399, 30),
-        ],
+        second_rows,
     )
     paths_file = tmp_path / "background_inputs.txt"
     paths_file.write_text("sample_a.tsv\nsample_b.tsv\n", encoding="utf-8")
@@ -309,22 +304,20 @@ def test_create_background_cli_allows_interval_mismatches_when_requested(
     assert exc_info.value.code == 2
     assert "Read-count interval sets do not match" in capsys.readouterr().err
 
-    assert (
-        cli.main(
-            [
-                "create-background",
-                "--read-counts-list",
-                str(paths_file),
-                "--allow-interval-mismatches",
-                "--output",
-                str(output_path),
-            ]
-        )
-        == 0
-    )
+    assert not output_path.exists()
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([
+            "create-background", "--read-counts-list", str(paths_file),
+            "--allow-interval-mismatches", "--output", str(output_path),
+        ])
+    assert exc_info.value.code == 2
+    assert "unrecognized arguments: --allow-interval-mismatches" in capsys.readouterr().err
+    assert not output_path.exists()
 
-    assert "Warning: interval-set validation is disabled" in capsys.readouterr().err
-    assert "chr1\t300\t399" in output_path.read_text(encoding="utf-8")
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main(["create-background", "--help"])
+    assert exc_info.value.code == 0
+    assert "--allow-interval-mismatches" not in capsys.readouterr().out
 
 
 def test_create_background_requires_output(

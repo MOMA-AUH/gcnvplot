@@ -40,21 +40,13 @@ def build_parser() -> argparse.ArgumentParser:
         "--read-counts-list",
         type=Path,
         required=True,
-        help="Text file with one read_counts.tsv path per line.",
+        help="Text file with one read_counts.tsv path per line; all samples must have identical intervals.",
     )
     build.add_argument(
         "--output",
         type=Path,
         required=True,
         help="Output TSV path for the background cohort summary.",
-    )
-    build.add_argument(
-        "--allow-interval-mismatches",
-        action="store_true",
-        help=(
-            "Allow background samples with different interval sets. "
-            "By default, all background samples must contain the same intervals."
-        ),
     )
     build.set_defaults(handler=build_background)
 
