@@ -15,7 +15,7 @@ from .segments import CnvSegment, parse_segments_vcf
 from .transcripts import TranscriptIndex, index_gtf
 from .utils import parse_region
 
-__version__ = "1.1.1"
+__version__ = "1.2.0"
 
 __all__ = [
     "BackgroundSummary",
