@@ -54,14 +54,12 @@ def _build_plot_svg(
     region_end = region[2]
 
     signal_rows = [row for row in rows if row["signal"] is not None]
-    if not signal_rows:
-        raise ValueError("No intervals with usable background statistics overlap the selected region.")
     y_values = [float(row["signal"]) for row in signal_rows]
     band_lower = [float(row["signal_lower"]) for row in signal_rows]
     band_upper = [float(row["signal_upper"]) for row in signal_rows]
     all_y = y_values + band_lower + band_upper
-    y_min = min(all_y)
-    y_max = max(all_y)
+    y_min = min(all_y, default=0.0)
+    y_max = max(all_y, default=0.0)
     max_abs = max(abs(y_min), abs(y_max), 0.25)
     y_min = -max_abs
     y_max = max_abs
@@ -174,6 +172,12 @@ def _build_plot_svg(
                 f'<line class="x-axis-tick" x1="{x:.2f}" y1="{tick_y1:.2f}" x2="{x:.2f}" y2="{tick_y2:.2f}" stroke="#1f2933" stroke-width="1.1"/>',
                 f'<text class="x-axis-tick-label" x="{x:.2f}" y="{label_y:.2f}" text-anchor="middle" font-size="11">{tick:,}</text>',
             ]
+        )
+
+    if not signal_rows:
+        elements.append(
+            f'<text x="{left + plot_width / 2:.2f}" y="{top + plot_height / 2 - 20:.2f}" '
+            'text-anchor="middle" font-size="16">No usable background coverage in this region</text>'
         )
 
     for run in signal_runs:

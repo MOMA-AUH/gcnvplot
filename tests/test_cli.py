@@ -1813,3 +1813,95 @@ def test_zero_coverage_does_not_supply_a_normalization_fallback() -> None:
     for sample in ({usable: 0, unsupported: 0}, {usable: 0, unsupported: 25}):
         with pytest.raises(ValueError, match="Cannot normalize"):
             gcnvplot.render_plot_svg(sample, background, region="chr1:100-299")
+
+
+@pytest.fixture
+def unsupported_region_inputs(tmp_path: Path):
+    counts = {("chr1", 100, 199): 10, ("chr1", 400, 449): 0, ("chr1", 500, 549): 0}
+    background = tmp_path / "background.tsv"
+    gcnvplot.write_background([counts, counts], background)
+    gtf = tmp_path / "unsupported.gtf"
+    attributes = 'gene_id "UNSUPPORTED"; gene_name "UNSUPPORTED"; transcript_id "ZERO_TX"; tag "MANE Select";'
+    gtf.write_text(
+        f'chr1\ttest\ttranscript\t400\t599\t.\t+\t.\t{attributes}\n'
+        f'chr1\ttest\texon\t400\t449\t.\t+\t.\t{attributes}\n'
+        f'chr1\ttest\texon\t500\t549\t.\t+\t.\t{attributes}\n', encoding="utf-8",
+    )
+    db = tmp_path / "transcripts.sqlite"
+    gcnvplot.index_gtf(gtf, db)
+    return counts, background, db
+
+
+def assert_unsupported_region(svg: str, *, transcript: bool) -> None:
+    root = ET.fromstring(svg)
+    ns = {"s": "http://www.w3.org/2000/svg"}
+    messages = [node.text for node in root.findall("s:text", ns)]
+    assert messages.count("No usable background coverage in this region") == 1
+    assert not root.findall('s:polyline[@class="sample"]', ns)
+    assert not root.findall('s:polygon[@class="ribbon"]', ns)
+    assert not [node for node in root.findall("s:circle", ns) if node.find("s:title", ns) is not None]
+    markers = root.findall('s:polygon[@class="exon-uncovered-marker"]', ns)
+    assert len(markers) == (3 if transcript else 0)  # Two exons and legend.
+    assert all(node.find("s:title", ns) is None for node in markers)
+    assert len(svg_exon_x_ranges(svg)) == (2 if transcript else 0)
+    assert len(svg_uncovered_exon_x_ranges(svg)) == (2 if transcript else 0)
+
+
+@pytest.mark.parametrize("sample_count", [0, 25])
+@pytest.mark.parametrize("transcript", [False, True])
+def test_wholly_unsupported_region_uses_normalization_elsewhere(
+    unsupported_region_inputs, tmp_path: Path, sample_count: int, transcript: bool,
+) -> None:
+    counts, background, db = unsupported_region_inputs
+    counts = {interval: value if value else sample_count for interval, value in counts.items()}
+    selection = {"transcript_id": "ZERO_TX", "transcript_index": db} if transcript else {"region": "chr1:400-599"}
+    svg = gcnvplot.render_plot_svg(counts, background, **selection)
+    assert_unsupported_region(svg, transcript=transcript)
+    prepared = gcnvplot.prepare_plot_data(counts, background)
+    with gcnvplot.TranscriptIndex(db) as index:
+        annotation = index.get("ZERO_TX") if transcript else None
+    svg = gcnvplot.render_prepared_plot_svg(prepared, ("chr1", 400, 599), transcript=annotation)
+    assert_unsupported_region(svg, transcript=transcript)
+
+    sample = tmp_path / "sample.tsv"
+    write_read_counts(sample, [(*interval, value) for interval, value in counts.items()])
+    output = tmp_path / "unsupported.svg"
+    cli_selection = ["--transcript", "ZERO_TX", "--transcript-db", str(db)] if transcript else ["--region", "chr1:400-599"]
+    assert cli.main([
+        "plot", "--read-counts", str(sample), "--background", str(background),
+        *cli_selection, "--output", str(output),
+    ]) == 0
+    assert_unsupported_region(output.read_text(encoding="utf-8"), transcript=transcript)
+
+
+@pytest.mark.parametrize("prepared_rendering", [False, True])
+@pytest.mark.parametrize("problem, message", [
+    ("normalization", "Cannot normalize"),
+    ("missing_background", "sample interval.*missing from the background"),
+    ("missing_sample", "background interval.*missing from the sample"),
+    ("inconsistent", "missing usable background statistics"),
+    ("empty_selection", "No intervals with background statistics overlap"),
+])
+def test_empty_region_display_does_not_hide_input_errors(
+    unsupported_region_inputs, prepared_rendering: bool, problem: str, message: str,
+) -> None:
+    counts, background_path, _db = unsupported_region_inputs
+    background = gcnvplot.load_background(background_path)
+    region = ("chr1", 400, 599)
+    if problem == "normalization":
+        counts[("chr1", 100, 199)] = 0
+        counts[("chr1", 400, 449)] = 25
+    elif problem == "missing_background":
+        del background.rows[("chr1", 400, 449)]
+    elif problem == "missing_sample":
+        del counts[("chr1", 400, 449)]
+    elif problem == "inconsistent":
+        background.rows[("chr1", 400, 449)]["BG_NORM_MEAN"] = "1"
+    else:
+        region = ("chr1", 800, 999)
+    with pytest.raises(ValueError, match=message):
+        if prepared_rendering:
+            prepared = gcnvplot.prepare_plot_data(counts, background)
+            gcnvplot.render_prepared_plot_svg(prepared, region)
+        else:
+            gcnvplot.render_plot_svg(counts, background, region=region)
