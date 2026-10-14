@@ -5,6 +5,7 @@ from __future__ import annotations
 import gzip
 import re
 import sqlite3
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import pytest
@@ -450,23 +451,52 @@ def test_report_failure_does_not_replace_existing_output(tmp_path: Path) -> None
 
 
 @pytest.mark.parametrize("unsupported_count", [0, 25])
-def test_report_renders_gene_with_partial_background_coverage(tmp_path: Path, unsupported_count: int) -> None:
-    counts, background, _gtf, db = _write_inputs(tmp_path)
-    cohort = {("chr1", 100, 150): 10, ("chr1", 200, 250): 0}
+def test_report_renders_partial_and_wholly_unsupported_genes(tmp_path: Path, unsupported_count: int) -> None:
+    counts, background, gtf, _db = _write_inputs(tmp_path)
+    cohort = {
+        ("chr1", 100, 150): 10, ("chr1", 200, 250): 0,
+        ("chr1", 400, 450): 0, ("chr1", 500, 550): 0,
+    }
+    second_gene = [
+        line.replace("G1", "G2").replace("GENE1", "GENE2")
+        .replace("HGNC:1", "HGNC:2").replace("CUSTOM_TX", "ZERO_TX")
+        .replace("\t100\t", "\t400\t").replace("\t150\t", "\t450\t")
+        .replace("\t200\t", "\t500\t").replace("\t250\t", "\t550\t")
+        for line in GTF_LINES
+    ]
+    gtf.write_text("\n".join(GTF_LINES + second_gene) + "\n", encoding="utf-8")
+    db = tmp_path / "both_genes.sqlite"
+    assert gcnvplot.index_gtf(gtf, db) == (2, 4)
     gcnvplot.write_background([cohort, cohort], background)
     counts.write_text(
         "CONTIG\tSTART\tEND\tCOUNT\nchr1\t100\t150\t10\n"
-        f"chr1\t200\t250\t{unsupported_count}\n", encoding="utf-8",
+        f"chr1\t200\t250\t{unsupported_count}\n"
+        f"chr1\t400\t450\t{unsupported_count}\n"
+        f"chr1\t500\t550\t{unsupported_count}\n", encoding="utf-8",
     )
     genes = tmp_path / "genes.tsv"
     _write_genes(genes)
+    with genes.open("a", encoding="utf-8") as handle:
+        handle.write("GENE2\tHGNC:2\t\n")
     output = tmp_path / "report.html"
     result = gcnvplot.build_report(counts, background, genes, db, output)
-    assert result.gene_count == 1
+    assert result.gene_count == 2
     page = output.read_text(encoding="utf-8")
     assert "<title>chr1:100-150\n" in page
     assert "<title>chr1:200-250\n" not in page
-    assert page.count('<polygon class="exon-uncovered-marker"') == 2  # Exon and legend.
+    assert page.count('<polygon class="exon-uncovered-marker"') == 5  # Three exons and two legends.
     assert 'class="exon-uncovered"' in page
     assert "No usable background in exon" in page
     assert 'class="sample"' in page
+    plots = re.findall(r"<svg\b.*?</svg>", page, re.DOTALL)
+    assert len(plots) == 2
+    ns = {"s": "http://www.w3.org/2000/svg"}
+    for svg in plots:
+        root = ET.fromstring(svg)
+        unsupported = ">GENE2</text>" in svg
+        assert ("No usable background coverage in this region" in svg) == unsupported
+        assert len(root.findall('s:polyline[@class="sample"]', ns)) == (0 if unsupported else 1)
+        assert len(root.findall('s:polygon[@class="ribbon"]', ns)) == (0 if unsupported else 1)
+        markers = root.findall('s:polygon[@class="exon-uncovered-marker"]', ns)
+        assert len(markers) == (3 if unsupported else 2)
+        assert all(node.find("s:title", ns) is None for node in markers)
